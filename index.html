@@ -60,6 +60,16 @@
                     <h3>Peso Teorico Stimato</h3>
                     <div class="value" id="predWeightValue">-- g</div>
                 </div>
+                <div class="card stat-card" style="border-color: #f39c12;">
+                    <h3>Valore Economico Stimato</h3>
+                    <div class="value" id="economicValueValue" style="color: #f39c12;">-- €</div>
+                    <p class="subtitle-text" style="font-size: 0.75rem;">Stima basata sui prezzi di mercato.</p>
+                </div>
+                <div class="card stat-card" style="border-color: #3498db;">
+                    <h3>Fabbisogno Idrico/Umido</h3>
+                    <div class="value" id="waterNeedValue" style="color: #3498db;">-- g/giorno</div>
+                    <p class="subtitle-text" style="font-size: 0.75rem;">Cibo umido raccomandato.</p>
+                </div>
             </div>
 
             <div class="card chart-card">
@@ -106,10 +116,31 @@
                 <p class="subtitle-text" id="sexRatioStatus" style="margin-top: 0.5rem; margin-bottom: 0;">Calcolo in corso...</p>
             </div>
 
+            <div class="card" id="demographicAlarmCard" style="margin-bottom: 1rem; border-color: var(--alert-red); display: none;">
+                <h3 style="color: var(--alert-red);">Allarme Demografico</h3>
+                <p class="subtitle-text" id="demographicAlarmText" style="margin-top: 0.5rem; margin-bottom: 0;">Possibile collo di bottiglia futuro rilevato.</p>
+            </div>
+
+            <div class="card">
+                <h3>Simulatore di Prelievo (Harvest)</h3>
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+                    <label>Grammi da prelevare oggi:</label>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="number" id="harvestAmount" class="input-standard" min="0" step="1" value="0" style="width: 100px;">
+                        <span style="font-size: 0.9rem; color: var(--text-muted);">g</span>
+                    </div>
+                </div>
+                <p class="subtitle-text">Nuova stima a <span id="harvestDaysLabel">30</span> gg: <strong id="harvestFutureWeight" style="color: var(--accent-green);">-- g</strong></p>
+            </div>
+
             <div class="card">
                 <h3>Demografia Stimata</h3>
                 <p class="subtitle-text">Calcolata in base alla biomassa totale e alle costanti specifiche.</p>
                 
+                <div class="chart-card" style="height: 250px; margin-bottom: 1rem;">
+                    <canvas id="censusChart"></canvas>
+                </div>
+
                 <div class="pyramid-container">
                     <div class="pyramid-level adult-female">
                         <div class="level-info">
@@ -155,10 +186,32 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Extra space at the bottom of the Census tab -->
+            <div style="height: 4rem;"></div>
         </section>
 
         <!-- DIAGNOSTICS TAB -->
         <section id="diagnostics" class="tab-content">
+            <div class="card">
+                <h3>Registro Manutenzione</h3>
+                <p class="subtitle-text" style="margin-bottom: 1rem;">Task ricorrenti da completare</p>
+                <div style="display: flex; flex-direction: column; gap: 0.8rem;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="checkbox" id="taskCleaning" class="input-checkbox" style="width: 20px; height: 20px;">
+                        <span>Pulizia Fondo Teca</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="checkbox" id="taskCartons" class="input-checkbox" style="width: 20px; height: 20px;">
+                        <span>Sostituzione Cartoni Uova</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="checkbox" id="taskTreatments" class="input-checkbox" style="width: 20px; height: 20px;">
+                        <span>Trattamenti Antiacaro (se necessari)</span>
+                    </label>
+                </div>
+            </div>
+
             <div class="card stat-card" style="border-color: var(--accent-green);">
                 <h3>Indice di Conversione Alimentare (FCR) Medio</h3>
                 <div class="value" id="fcrValue" style="color: var(--accent-green);">--</div>
@@ -170,9 +223,9 @@
                 <canvas id="healthChart"></canvas>
             </div>
             <div class="card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                    <h3>Log Manutenzione & Pesate</h3>
-                    <div style="display: flex; gap: 0.5rem;">
+                <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem;">
+                    <h3 style="margin: 0;">Log Manutenzione & Pesate</h3>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                         <button id="btnExportCSV" class="btn-standard btn-primary">Esporta CSV</button>
                         <button id="btnResetDB" class="btn-standard btn-danger">Reset Dati</button>
                     </div>
@@ -184,6 +237,7 @@
                                 <th>Data</th>
                                 <th>Peso (g)</th>
                                 <th>Cibo (g)</th>
+                                <th>FCR</th>
                                 <th>H (%)</th>
                                 <th>Note</th>
                             </tr>

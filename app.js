@@ -257,6 +257,26 @@ const updateUI = () => {
 
     const totalCount = fCount + mCount + saCount + medCount + smCount + bCount;
 
+    // Economic Value Calculator
+    // Prices per individual (approximate example prices in EUR)
+    const prices = {
+        FEMALE: 0.50,
+        MALE: 0.40,
+        SUBADULT: 0.30,
+        MEDIUM: 0.20,
+        SMALL: 0.10,
+        BABY: 0.05
+    };
+    const economicValue = (fCount * prices.FEMALE) + (mCount * prices.MALE) + (saCount * prices.SUBADULT) + (medCount * prices.MEDIUM) + (smCount * prices.SMALL) + (bCount * prices.BABY);
+    const economicValueEl = document.getElementById('economicValueValue');
+    if (economicValueEl) economicValueEl.innerText = `${economicValue.toFixed(2)} €`;
+
+    // Water/Wet Food Need Calculator
+    // Recommendation: approx 20-30% of their body weight in wet food/water per week, roughly 3-4% per day.
+    const waterNeed = latest.total_weight * 0.035;
+    const waterNeedEl = document.getElementById('waterNeedValue');
+    if (waterNeedEl) waterNeedEl.innerText = `${waterNeed.toFixed(1)} g/giorno`;
+
     // Sex Ratio calculation
     if (fCount > 0) {
         const ratio = mCount / fCount;
@@ -269,18 +289,63 @@ const updateUI = () => {
             statusEl.innerText = "Ottimale per la riproduzione (1:3 - 1:5).";
             statusEl.style.color = "var(--accent-green)";
             cardEl.style.borderColor = "var(--accent-green)";
+            cardEl.style.backgroundColor = "rgba(39, 174, 96, 0.1)";
         } else if (ratio > 0.35) {
             statusEl.innerText = "Eccesso di maschi. Valutare la rimozione per evitare competizione/stress.";
             statusEl.style.color = "var(--alert-red)";
             cardEl.style.borderColor = "var(--alert-red)";
+            cardEl.style.backgroundColor = "rgba(255, 71, 87, 0.1)";
         } else {
             statusEl.innerText = "Scarsità di maschi. Potrebbe ridurre la frequenza di accoppiamento.";
             statusEl.style.color = "#F2C94C"; // Warning yellow
             cardEl.style.borderColor = "#F2C94C";
+            cardEl.style.backgroundColor = "rgba(242, 201, 76, 0.1)";
         }
     } else {
         document.getElementById('sexRatioValue').innerText = "--";
         document.getElementById('sexRatioStatus').innerText = "Dati insufficienti.";
+    }
+
+    // Demographic Alarms (Bottlenecks)
+    const alarmCard = document.getElementById('demographicAlarmCard');
+    const alarmText = document.getElementById('demographicAlarmText');
+    if (alarmCard && alarmText) {
+        // Example logic: if babies are less than 50% of the total, when normally they should be high for future growth
+        // Actually, our static ratio puts babies at 5% of weight, which is ~50% of count.
+        // Let's create an alert if the baby count is too low relative to adults.
+        const adultsCount = fCount + mCount;
+        if (adultsCount > 0 && bCount < adultsCount * 2) { // Just an example threshold
+            alarmCard.style.display = 'block';
+            alarmText.innerText = "Attenzione: Scarsità di micro-neanidi rilevata. Tra qualche mese la colonia potrebbe subire un crollo demografico. Valutare aumento temperature o integrazione alimentare per favorire le nascite.";
+        } else {
+            alarmCard.style.display = 'none';
+        }
+    }
+
+    // Harvest Simulator
+    const harvestAmountInput = document.getElementById('harvestAmount');
+    if (harvestAmountInput) {
+        const updateHarvest = () => {
+            const amount = parseFloat(harvestAmountInput.value) || 0;
+            const currentWeight = latest.total_weight;
+            const remainingWeight = Math.max(0, currentWeight - amount);
+
+            const days = parseInt(document.getElementById('deltaGSlider').value) || 30;
+            document.getElementById('harvestDaysLabel').innerText = days;
+
+            const simulatedFuture = calculatePrediction(remainingWeight, 0, lastAdultRatio, days, appState.params);
+            document.getElementById('harvestFutureWeight').innerText = `${simulatedFuture.toFixed(1)} g`;
+        };
+
+        if (!harvestAmountInput.dataset.listenerAttached) {
+            harvestAmountInput.addEventListener('input', updateHarvest);
+            document.getElementById('deltaGSlider').addEventListener('input', updateHarvest);
+            document.getElementById('deltaGInput').addEventListener('input', updateHarvest);
+            harvestAmountInput.dataset.listenerAttached = 'true';
+        }
+
+        // Initial call
+        updateHarvest();
     }
 
     document.getElementById('countFemale').innerText = fCount;
@@ -298,17 +363,80 @@ const updateUI = () => {
     document.getElementById('barSmall').style.width = `${(smCount/totalCount)*100 * 3}%`;
     document.getElementById('barBaby').style.width = `${(bCount/totalCount)*100 * 3}%`;
 
+    // Update Census Chart
+    const ctxCensus = document.getElementById('censusChart');
+    if (ctxCensus) {
+        if (appState.charts.census) {
+            appState.charts.census.destroy();
+        }
+        appState.charts.census = new Chart(ctxCensus.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Femmine', 'Maschi', 'Sub-Adulte', 'Medie', 'Piccole', 'Micro'],
+                datasets: [{
+                    data: [fCount, mCount, saCount, medCount, smCount, bCount],
+                    backgroundColor: [
+                        '#9b59b6', // var(--accent-purple)
+                        '#8e44ad', // darker purple
+                        '#3498db', // blue
+                        '#2ecc71', // var(--accent-green)
+                        '#27ae60', // darker green
+                        '#f1c40f'  // yellow
+                    ],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            color: 'white',
+                            font: { size: 10 }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const value = context.raw;
+                                const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                return `${context.label}: ${value} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     // History Table
     const tbody = document.querySelector('#historyTable tbody');
     tbody.innerHTML = '';
     // Reverse to show newest first
-    [...appState.measurements].reverse().forEach(m => {
+    const reversedMeasurements = [...appState.measurements].reverse();
+    reversedMeasurements.forEach((m, index) => {
         const foodDisplay = m.food_amount !== undefined ? m.food_amount.toFixed(1) : '-';
+
+        let fcrDisplay = '-';
+        // Previous measurement is at index + 1 in the reversed array
+        if (index + 1 < reversedMeasurements.length) {
+            const prev = reversedMeasurements[index + 1];
+            if (m.food_amount !== undefined && m.total_weight > prev.total_weight) {
+                const fcr = m.food_amount / (m.total_weight - prev.total_weight);
+                fcrDisplay = fcr.toFixed(2);
+            }
+        }
+
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${m.date}</td>
             <td>${m.total_weight.toFixed(1)}</td>
             <td>${foodDisplay}</td>
+            <td>${fcrDisplay}</td>
             <td style="color: ${m.health_index < 75 ? 'var(--alert-red)' : 'var(--accent-green)'}">
                 ${m.health_index.toFixed(1)}%
             </td>
@@ -432,6 +560,17 @@ const updateCharts = () => {
         },
         options: {
             responsive: true,
+            onClick: (e, elements) => {
+                if (elements.length > 0) {
+                    const dataIndex = elements[0].index;
+                    const note = notesData[dataIndex];
+                    if (note) {
+                        showNotification("Nota Registrata", `In data ${labels[dataIndex]}: ${note}`, "success");
+                    } else {
+                        showNotification("Info", `In data ${labels[dataIndex]} non sono presenti note.`, "warning");
+                    }
+                }
+            },
             plugins: {
                 tooltip: {
                     callbacks: {
@@ -441,7 +580,7 @@ const updateCharts = () => {
                         afterBody: function(tooltipItems) {
                             const dataIndex = tooltipItems[0].dataIndex;
                             if (notesData[dataIndex]) {
-                                return '\nNote: ' + notesData[dataIndex];
+                                return '\nNote: ' + notesData[dataIndex] + '\n(Clicca sul punto per i dettagli)';
                             }
                             return '';
                         }
@@ -471,6 +610,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) {
         console.error("Failed to initialize app data", e);
     }
+
+    // Load Maintenance Task State
+    const tasks = ['taskCleaning', 'taskCartons', 'taskTreatments'];
+    tasks.forEach(taskId => {
+        const el = document.getElementById(taskId);
+        if (el) {
+            const savedState = localStorage.getItem(taskId);
+            if (savedState === 'true') {
+                el.checked = true;
+            }
+            el.addEventListener('change', (e) => {
+                localStorage.setItem(taskId, e.target.checked);
+            });
+        }
+    });
 
     // Tabs logic
     const tabs = document.querySelectorAll('.tab-btn');
@@ -682,14 +836,36 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             document.getElementById('btnConfirmReset').addEventListener('click', () => {
                 document.body.removeChild(confirmModal);
-                const req = indexedDB.deleteDatabase(dbName);
-                req.onsuccess = () => {
-                    showNotification("Reset completato", "Database resettato. Ricaricamento in corso...", "success");
-                    setTimeout(() => window.location.reload(), 1500);
-                };
-                req.onerror = () => {
-                    showNotification("Errore", "Errore nel reset del database.", "alert");
-                };
+                // Double confirmation modal
+                const doubleConfirmModal = document.createElement('div');
+                doubleConfirmModal.className = 'modal-overlay active';
+                doubleConfirmModal.innerHTML = `
+                    <div class="modal">
+                        <h2 style="color: var(--alert-red);">Ultimo Avviso</h2>
+                        <p>Sei ASSOLUTAMENTE sicuro? L'operazione è irreversibile e i dati andranno persi per sempre.</p>
+                        <div class="modal-actions">
+                            <button type="button" class="btn-standard btn-cancel" id="btnCancelDoubleReset">Non Resettare</button>
+                            <button type="button" class="btn-standard btn-danger" id="btnDoubleConfirmReset">Si, Elimina Tutto</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(doubleConfirmModal);
+
+                document.getElementById('btnCancelDoubleReset').addEventListener('click', () => {
+                    document.body.removeChild(doubleConfirmModal);
+                });
+
+                document.getElementById('btnDoubleConfirmReset').addEventListener('click', () => {
+                    document.body.removeChild(doubleConfirmModal);
+                    const req = indexedDB.deleteDatabase(dbName);
+                    req.onsuccess = () => {
+                        showNotification("Reset completato", "Database resettato. Ricaricamento in corso...", "success");
+                        setTimeout(() => window.location.reload(), 1500);
+                    };
+                    req.onerror = () => {
+                        showNotification("Errore", "Errore nel reset del database.", "alert");
+                    };
+                });
             });
         });
     }
