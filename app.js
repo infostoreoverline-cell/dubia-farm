@@ -6,7 +6,8 @@
 const ALPHA = 1e-6; // Learning rate for gradient descent
 const DEFAULT_PARAMS = {
     theta1: 0.05, // Resa Alimentazione
-    theta2: 0.01 // Crescita Neanidi
+    theta2: 0.01, // Crescita Neanidi
+    mortalityRate: 1.5 // Mortalità Mensile (%)
 };
 const HEALTH_THRESHOLD_WARNING = 90;
 const HEALTH_THRESHOLD_ALERT = 75;
@@ -127,12 +128,19 @@ const seedDataIfEmpty = async () => {
 
 // --- ML ENGINE (D.U.B.I.A.) ---
 
-const calculatePrediction = (lastWeight, foodAmount, adultRatio, delta_g, params) => {
+const calculatePrediction = (lastWeight, foodAmount, adultRatio, delta_g, params, harvestAmount = 0) => {
     // W_pred = W_curr + (theta1 * C_t) + (theta2 * W_curr * (1 - A_t) * (delta_g / 30))
-    return lastWeight + (params.theta1 * foodAmount) + (params.theta2 * (lastWeight * (1 - adultRatio)) * (delta_g / 30));
+    let w_pred = lastWeight + (params.theta1 * foodAmount) + (params.theta2 * (lastWeight * (1 - adultRatio)) * (delta_g / 30));
+    // Applica Mortalità Fisiologica (proporzionale ai giorni delta_g rispetto a 30)
+    let mortalityRate = params.mortalityRate || 1.5;
+    let mortalityFactor = (mortalityRate / 100) * (delta_g / 30);
+    w_pred = w_pred * (1 - mortalityFactor);
+    // Sottrai prelievo
+    w_pred -= harvestAmount;
+    return Math.max(0, w_pred);
 };
 
-const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, notes) => {
+const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, notes, harvestAmount = 0, isNewBlood = false) => {
     const lastMeasurement = appState.measurements.length > 0 
         ? appState.measurements[appState.measurements.length - 1] 
         : null;
@@ -147,7 +155,7 @@ const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, n
         const timeDiff = Math.abs(d2.getTime() - d1.getTime());
         delta_g = Math.max(1, Math.ceil(timeDiff / (1000 * 3600 * 24))); // Ensure at least 1 day to avoid 0
 
-        predictedWeight = calculatePrediction(lastMeasurement.total_weight, foodAmount, adultRatio, delta_g, appState.params);
+        predictedWeight = calculatePrediction(lastMeasurement.total_weight, foodAmount, adultRatio, delta_g, appState.params, harvestAmount);
         
         // Calculate Error (E = W_pred - W_real in text, actually text says E = W_pred - W_real. Wait: "E = W_pred - W_real". Then theta1_new = theta1_old - (alpha * E * C_t).
         const error = predictedWeight - realWeight;
@@ -170,6 +178,8 @@ const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, n
         date,
         total_weight: realWeight,
         food_amount: foodAmount,
+        harvest_amount: harvestAmount,
+        is_new_blood: isNewBlood,
         adult_ratio: adultRatio,
         notes,
         predicted_weight: predictedWeight,
@@ -186,6 +196,72 @@ const checkHealthThresholds = (healthIndex) => {
     } else if (healthIndex < HEALTH_THRESHOLD_WARNING) {
         showNotification("Attenzione", `L'Indice di Salute è al ${healthIndex.toFixed(1)}%. Monitorare la colonia.`, "warning");
     }
+};
+
+
+const updateDoubleScenarioChart = (harvestAmount, simulatedFuture, days) => {
+    if (!appState.charts.weight || !appState.measurements || appState.measurements.length === 0) return;
+
+    const chart = appState.charts.weight;
+    const latest = appState.measurements[appState.measurements.length - 1];
+
+    // Normal Prediction
+    const normalFuture = calculatePrediction(latest.total_weight, 0, latest.adult_ratio, days, appState.params);
+
+    // Check if datasets exist for predictions
+    let normalDataset = chart.data.datasets.find(d => d.label === 'Predizione Naturale (g)');
+    let harvestDataset = chart.data.datasets.find(d => d.label === 'Simulazione Prelievo (g)');
+
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + days);
+    const futureLabel = futureDate.toISOString().split('T')[0];
+
+    // Remove existing future points from original datasets
+    const baseLabels = appState.measurements.map(m => m.date);
+
+    chart.data.labels = [...baseLabels, futureLabel];
+
+    const baseRealData = appState.measurements.map(m => m.total_weight);
+    const basePredData = appState.measurements.map(m => m.predicted_weight);
+
+    chart.data.datasets[0].data = [...baseRealData, null];
+    chart.data.datasets[1].data = [...basePredData, null];
+
+    if (!normalDataset) {
+        normalDataset = {
+            label: 'Predizione Naturale (g)',
+            data: [],
+            borderColor: '#3498db',
+            borderDash: [3, 3],
+            borderWidth: 2,
+            tension: 0
+        };
+        chart.data.datasets.push(normalDataset);
+    }
+
+    if (!harvestDataset) {
+        harvestDataset = {
+            label: 'Simulazione Prelievo (g)',
+            data: [],
+            borderColor: '#e74c3c',
+            borderDash: [3, 3],
+            borderWidth: 2,
+            tension: 0
+        };
+        chart.data.datasets.push(harvestDataset);
+    }
+
+    // Pad with nulls so line starts from latest point
+    const padLength = baseLabels.length - 1;
+    const nullArray = Array(padLength).fill(null);
+
+    normalDataset.data = [...nullArray, latest.total_weight, normalFuture];
+
+    // The harvest drops immediately, then grows
+    const postHarvestWeight = Math.max(0, latest.total_weight - harvestAmount);
+    harvestDataset.data = [...nullArray, postHarvestWeight, simulatedFuture];
+
+    chart.update();
 };
 
 // --- UI UPDATES ---
@@ -213,6 +289,12 @@ const updateUI = () => {
 
     document.getElementById('theta1Value').innerText = appState.params.theta1.toFixed(4);
     document.getElementById('theta2Value').innerText = appState.params.theta2.toFixed(4);
+    if (appState.params.mortalityRate !== undefined) {
+        const mortInput = document.getElementById('inputMortality');
+        if (mortInput && document.activeElement !== mortInput) {
+            mortInput.value = appState.params.mortalityRate.toFixed(1);
+        }
+    }
 
     const healthEl = document.getElementById('healthValue');
     healthEl.innerText = `${latest.health_index.toFixed(1)}%`;
@@ -306,46 +388,96 @@ const updateUI = () => {
         document.getElementById('sexRatioStatus').innerText = "Dati insufficienti.";
     }
 
-    // Demographic Alarms (Bottlenecks)
-    const alarmCard = document.getElementById('demographicAlarmCard');
-    const alarmText = document.getElementById('demographicAlarmText');
-    if (alarmCard && alarmText) {
-        // Example logic: if babies are less than 50% of the total, when normally they should be high for future growth
-        // Actually, our static ratio puts babies at 5% of weight, which is ~50% of count.
-        // Let's create an alert if the baby count is too low relative to adults.
-        const adultsCount = fCount + mCount;
-        if (adultsCount > 0 && bCount < adultsCount * 2) { // Just an example threshold
-            alarmCard.style.display = 'block';
-            alarmText.innerText = "Attenzione: Scarsità di micro-neanidi rilevata. Tra qualche mese la colonia potrebbe subire un crollo demografico. Valutare aumento temperature o integrazione alimentare per favorire le nascite.";
-        } else {
-            alarmCard.style.display = 'none';
-        }
-    }
 
     // Harvest Simulator
     const harvestAmountInput = document.getElementById('harvestAmount');
+    const harvestCategorySelect = document.getElementById('harvestCategory');
+    const harvestCyclicCheckbox = document.getElementById('harvestCyclic');
+    const msyWarning = document.getElementById('msyWarning');
+    const harvestCountLabel = document.getElementById('harvestCountLabel');
+    const harvestCountVal = document.getElementById('harvestCountVal');
+
     if (harvestAmountInput) {
         const updateHarvest = () => {
-            const amount = parseFloat(harvestAmountInput.value) || 0;
+            let amount = parseFloat(harvestAmountInput.value) || 0;
+            const category = harvestCategorySelect ? harvestCategorySelect.value : 'ALL';
+            const isCyclic = harvestCyclicCheckbox ? harvestCyclicCheckbox.checked : false;
             const currentWeight = latest.total_weight;
-            const remainingWeight = Math.max(0, currentWeight - amount);
 
+            // Optional: calculate count based on category
+            if (category !== 'ALL' && MASS[category]) {
+                const count = Math.round(amount / MASS[category]);
+                if (harvestCountLabel) {
+                    harvestCountLabel.style.display = 'inline';
+                    harvestCountVal.innerText = count;
+                }
+            } else {
+                if (harvestCountLabel) harvestCountLabel.style.display = 'none';
+            }
+
+            // MSY & Simulation Logic
             const days = parseInt(document.getElementById('deltaGSlider').value) || 30;
             document.getElementById('harvestDaysLabel').innerText = days;
 
-            const simulatedFuture = calculatePrediction(remainingWeight, 0, lastAdultRatio, days, appState.params);
+            // Calcolo impatto demografico se prelievo selettivo
+            let simulatedAdultRatio = lastAdultRatio;
+            if (category === 'FEMALE') {
+                const newFemaleWeight = Math.max(0, currentWeight * lastAdultRatio * (fCount / (fCount + mCount + 0.1)) - amount);
+                simulatedAdultRatio = Math.max(0.01, newFemaleWeight / (currentWeight - amount));
+            } else if (category === 'MALE') {
+                const oldMaleWeight = currentWeight * lastAdultRatio * (mCount / (fCount + mCount + 0.1));
+                const newMaleWeight = Math.max(0, oldMaleWeight - amount);
+                const femaleWeight = currentWeight * lastAdultRatio * (fCount / (fCount + mCount + 0.1));
+                simulatedAdultRatio = Math.max(0.01, (femaleWeight + newMaleWeight) / (currentWeight - amount));
+            }
+
+            // Se prelievo ciclico, moltiplica l'amount per le settimane nel deltaG
+            let totalSimulatedHarvest = amount;
+            if (isCyclic) {
+                const weeks = days / 7;
+                totalSimulatedHarvest = amount * weeks;
+            }
+
+            const remainingWeight = Math.max(0, currentWeight - totalSimulatedHarvest);
+            const simulatedFuture = calculatePrediction(remainingWeight, 0, simulatedAdultRatio, days, appState.params);
+
             document.getElementById('harvestFutureWeight').innerText = `${simulatedFuture.toFixed(1)} g`;
+
+            // MSY Warning: Se il peso futuro è inferiore al peso corrente prima del prelievo, la colonia è in declino
+            if (simulatedFuture < currentWeight && totalSimulatedHarvest > 0) {
+                if (msyWarning) msyWarning.style.display = 'block';
+            } else {
+                if (msyWarning) msyWarning.style.display = 'none';
+            }
+
+            // Aggiorna Grafico Doppio Scenario
+            updateDoubleScenarioChart(totalSimulatedHarvest, simulatedFuture, days);
         };
 
         if (!harvestAmountInput.dataset.listenerAttached) {
             harvestAmountInput.addEventListener('input', updateHarvest);
+            if (harvestCategorySelect) harvestCategorySelect.addEventListener('change', updateHarvest);
+            if (harvestCyclicCheckbox) harvestCyclicCheckbox.addEventListener('change', updateHarvest);
             document.getElementById('deltaGSlider').addEventListener('input', updateHarvest);
             document.getElementById('deltaGInput').addEventListener('input', updateHarvest);
             harvestAmountInput.dataset.listenerAttached = 'true';
         }
 
-        // Initial call
-        updateHarvest();
+        // Suggeritore Ottimale
+        const suggesterText = document.getElementById('optimalSuggesterText');
+        if (suggesterText) {
+            if (fCount === 0) fCount = 1;
+            const ratio = mCount / fCount;
+            if (ratio > 0.4) {
+                suggesterText.innerText = `Rapporto maschi/femmine troppo alto (${ratio.toFixed(2)}). Si consiglia di prelevare Maschi Adulti per riequilibrare la colonia verso 1:3.`;
+            } else if (medCount + smCount > (saCount + fCount + mCount) * 2) {
+                suggesterText.innerText = `Eccesso di Neanidi. Si consiglia un prelievo leggero di Neanidi Medie per evitare futuri colli di bottiglia spaziali (sovraffollamento).`;
+            } else {
+                suggesterText.innerText = `Colonia ben bilanciata. Prelievo generico raccomandato per mantenere stabile la piramide demografica.`;
+            }
+        }
+
+        setTimeout(() => updateHarvest(), 0);
     }
 
     document.getElementById('countFemale').innerText = fCount;
@@ -354,6 +486,38 @@ const updateUI = () => {
     document.getElementById('countMedium').innerText = medCount;
     document.getElementById('countSmall').innerText = smCount;
     document.getElementById('countBaby').innerText = bCount;
+
+    // Bottleneck detection
+    const alarmCard = document.getElementById('demographicAlarmCard');
+    const alarmText = document.getElementById('demographicAlarmText');
+    if (alarmCard && alarmText) {
+        if (bCount < smCount * 0.5 && latest.total_weight > 50) {
+            alarmCard.style.display = 'block';
+            alarmText.innerText = "Allarme: Carenza drastica di Micro-Neanidi. Previsto vuoto demografico tra 2-3 mesi.";
+        } else if (saCount < fCount * 0.2 && fCount > 10) {
+            alarmCard.style.display = 'block';
+            alarmText.innerText = "Allarme: Pochissime Sub-Adulte. Rischio di calo riproduttivo imminente (mancato rimpiazzo adulte).";
+        } else {
+            alarmCard.style.display = 'none';
+        }
+    }
+
+    // Maturation Timer
+    const maturationCard = document.getElementById('maturationTimerCard');
+    const maturationText = document.getElementById('maturationTimerText');
+    if (maturationCard && maturationText) {
+        maturationCard.style.display = 'block';
+        // Trova il picco demografico tra le neanidi e stima i giorni
+        if (medCount > smCount && medCount > saCount) {
+            maturationText.innerText = "Il picco attuale (Neanidi Medie) impiegherà circa 25-35 giorni per mutare in Sub-Adulte.";
+        } else if (smCount > medCount && smCount > bCount) {
+            maturationText.innerText = "Il picco attuale (Neanidi Piccole) impiegherà circa 30-40 giorni per mutare in Medie.";
+        } else if (bCount > smCount) {
+            maturationText.innerText = "Forte presenza di nascite. Il picco raggiungerà la taglia Media in circa 60-70 giorni.";
+        } else {
+            maturationText.innerText = "Distribuzione stabile. Nessun picco imminente rilevato.";
+        }
+    }
 
     // Update Progress Bars based on relative population counts
     document.getElementById('barFemale').style.width = `${(fCount/totalCount)*100 * 3}%`; // Multiplier for visual effect
@@ -432,10 +596,12 @@ const updateUI = () => {
         }
 
         const row = document.createElement('tr');
+        const isNewBlood = m.is_new_blood ? '🩸 ' : '';
         row.innerHTML = `
-            <td>${m.date}</td>
+            <td>${isNewBlood}${m.date}</td>
             <td>${m.total_weight.toFixed(1)}</td>
             <td>${foodDisplay}</td>
+            <td style="color: var(--alert-red);">${m.harvest_amount ? '-' + m.harvest_amount.toFixed(1) : '0.0'}</td>
             <td>${fcrDisplay}</td>
             <td style="color: ${m.health_index < 75 ? 'var(--alert-red)' : 'var(--accent-green)'}">
                 ${m.health_index.toFixed(1)}%
@@ -444,6 +610,8 @@ const updateUI = () => {
                 ${m.notes || '-'}
             </td>
         `;
+        if (m.is_new_blood) row.style.backgroundColor = 'rgba(155, 89, 182, 0.1)';
+
         tbody.appendChild(row);
     });
 
@@ -560,17 +728,6 @@ const updateCharts = () => {
         },
         options: {
             responsive: true,
-            onClick: (e, elements) => {
-                if (elements.length > 0) {
-                    const dataIndex = elements[0].index;
-                    const note = notesData[dataIndex];
-                    if (note) {
-                        showNotification("Nota Registrata", `In data ${labels[dataIndex]}: ${note}`, "success");
-                    } else {
-                        showNotification("Info", `In data ${labels[dataIndex]} non sono presenti note.`, "warning");
-                    }
-                }
-            },
             plugins: {
                 tooltip: {
                     callbacks: {
@@ -602,6 +759,15 @@ const updateCharts = () => {
 // --- EVENT LISTENERS & DOM LOGIC ---
 
 document.addEventListener('DOMContentLoaded', async () => {
+    const inputMortality = document.getElementById('inputMortality');
+    if (inputMortality) {
+        inputMortality.addEventListener('change', (e) => {
+            appState.params.mortalityRate = parseFloat(e.target.value) || 1.5;
+            saveParams(appState.params);
+            updateUI();
+        });
+    }
+
     // Init DB
     try {
         await initDB();
@@ -758,8 +924,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const foodAmount = parseFloat(document.getElementById('inputFoodAmount').value);
         const adultRatio = parseFloat(document.getElementById('inputAdultRatio').value);
         const notes = document.getElementById('inputNotes').value;
+        const harvestAmount = parseFloat(document.getElementById('inputHarvestAmount')?.value) || 0;
 
-        await processNewMeasurement(date, weight, foodAmount, adultRatio, notes);
+        await processNewMeasurement(date, weight, foodAmount, adultRatio, notes, harvestAmount, false);
         
         modal.classList.remove('active');
         form.reset();
@@ -809,6 +976,32 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.body.removeChild(link);
 
             showNotification("Esportazione Completata", "Il file CSV è stato scaricato.", "success");
+        });
+    }
+
+
+    const btnNewBlood = document.getElementById('btnNewBlood');
+    if (btnNewBlood) {
+        btnNewBlood.addEventListener('click', async () => {
+            if (appState.measurements.length === 0) {
+                showNotification("Errore", "Nessun dato presente.", "alert");
+                return;
+            }
+            const latest = appState.measurements[appState.measurements.length - 1];
+            const today = new Date().toISOString().split('T')[0];
+
+            // Inserisci un evento di tracciamento consanguineità senza peso (o copiando l'ultimo peso)
+            await processNewMeasurement(
+                today,
+                latest.total_weight,
+                0,
+                latest.adult_ratio,
+                "[Nuovo Sangue] Inseriti nuovi riproduttori per migliorare la genetica.",
+                0,
+                true
+            );
+
+            showNotification("Successo", "Nuova linea genetica registrata con successo.", "success");
         });
     }
 
