@@ -702,6 +702,9 @@ const updateUI = () => {
             <td style="max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${m.notes || ''}">
                 ${m.notes || '-'}
             </td>
+            <td>
+                <button class="btn-standard btn-danger btn-delete-row" data-id="${m.id}" style="padding: 0.2rem 0.5rem; font-size: 0.8rem; background-color: var(--alert-red);">X</button>
+            </td>
         `;
         if (m.is_new_blood) row.style.backgroundColor = 'rgba(155, 89, 182, 0.1)';
 
@@ -720,6 +723,9 @@ const updateUI = () => {
                     <td>${m.date}</td>
                     <td style="color: var(--alert-red);">${m.harvest_amount.toFixed(1)}</td>
                     <td style="max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${m.notes || ''}">${m.notes || '-'}</td>
+                    <td>
+                        <button class="btn-standard btn-danger btn-delete-row" data-id="${m.id}" style="padding: 0.2rem 0.5rem; font-size: 0.8rem; background-color: var(--alert-red);">X</button>
+                    </td>
                 `;
                 harvestTbody.appendChild(hRow);
             }
@@ -870,6 +876,81 @@ const updateCharts = () => {
 };
 
 // --- EVENT LISTENERS & DOM LOGIC ---
+
+
+const deleteMeasurement = async (id) => {
+    return new Promise((resolve) => {
+        const tx = db.transaction("measurements", "readwrite");
+        const store = tx.objectStore("measurements");
+        const req = store.delete(Number(id)); // ID is usually a number
+
+        req.onsuccess = () => {
+            appState.measurements = appState.measurements.filter(m => m.id !== Number(id));
+            updateUI();
+            showNotification("Eliminato", "La rilevazione è stata rimossa con successo.", "success");
+            resolve();
+        };
+
+        req.onerror = () => {
+            showNotification("Errore", "Impossibile eliminare il dato.", "alert");
+            resolve();
+        };
+    });
+};
+
+document.addEventListener('click', (e) => {
+    const deleteBtn = e.target.closest('.btn-delete-row');
+    if (deleteBtn) {
+        const id = deleteBtn.getAttribute('data-id');
+
+        // First Confirmation modal
+        const confirmModal = document.createElement('div');
+        confirmModal.className = 'modal-overlay active';
+        confirmModal.innerHTML = `
+            <div class="modal">
+                <h2 style="color: var(--alert-red);">Conferma Eliminazione</h2>
+                <p>Sei sicuro di voler eliminare questa singola rilevazione?</p>
+                <div class="modal-actions">
+                    <button type="button" class="btn-standard btn-cancel" class="btnCancelDelRow">Annulla</button>
+                    <button type="button" class="btn-standard btn-danger" class="btnConfirmDelRow">Procedi</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(confirmModal);
+
+        confirmModal.querySelectorAll('.btn-cancel')[0].addEventListener('click', () => {
+            document.body.removeChild(confirmModal);
+        });
+
+        confirmModal.querySelectorAll('.btn-danger')[0].addEventListener('click', () => {
+            document.body.removeChild(confirmModal);
+
+            // Double Confirmation modal
+            const doubleConfirmModal = document.createElement('div');
+            doubleConfirmModal.className = 'modal-overlay active';
+            doubleConfirmModal.innerHTML = `
+                <div class="modal">
+                    <h2 style="color: var(--alert-red);">Ultimo Avviso</h2>
+                    <p>Attenzione: l'eliminazione del dato è irreversibile e influenzerà le rilevazioni successive. Procedere comunque?</p>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-standard btn-cancel">Non Eliminare</button>
+                        <button type="button" class="btn-standard btn-danger">Si, Elimina Dato</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(doubleConfirmModal);
+
+            doubleConfirmModal.querySelectorAll('.btn-cancel')[0].addEventListener('click', () => {
+                document.body.removeChild(doubleConfirmModal);
+            });
+
+            doubleConfirmModal.querySelectorAll('.btn-danger')[0].addEventListener('click', async () => {
+                document.body.removeChild(doubleConfirmModal);
+                await deleteMeasurement(id);
+            });
+        });
+    }
+});
 
 document.addEventListener('DOMContentLoaded', async () => {
     const inputMortality = document.getElementById('inputMortality');
