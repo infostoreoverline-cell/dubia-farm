@@ -276,11 +276,13 @@ const updateDoubleScenarioChart = (harvestAmount, simulatedFuture, days) => {
             label: 'Predizione Naturale (g)',
             data: [],
             borderColor: '#3498db',
-            borderDash: [3, 3],
+            borderDash: [5, 5], // Tratteggiato
             borderWidth: 2,
             tension: 0
         };
         chart.data.datasets.push(normalDataset);
+    } else {
+        normalDataset.borderDash = [5, 5];
     }
 
     if (!harvestDataset) {
@@ -288,11 +290,13 @@ const updateDoubleScenarioChart = (harvestAmount, simulatedFuture, days) => {
             label: 'Simulazione Prelievo (g)',
             data: [],
             borderColor: '#e74c3c',
-            borderDash: [3, 3],
+            borderDash: [5, 5], // Tratteggiato
             borderWidth: 2,
             tension: 0
         };
         chart.data.datasets.push(harvestDataset);
+    } else {
+        harvestDataset.borderDash = [5, 5];
     }
 
     // Pad with nulls so line starts from latest point
@@ -443,6 +447,9 @@ const updateUI = () => {
 
     if (harvestAmountInput) {
         const updateHarvest = () => {
+
+
+
             let amount = parseFloat(harvestAmountInput.value) || 0;
             const category = harvestCategorySelect ? harvestCategorySelect.value : 'ALL';
             const isCyclic = harvestCyclicCheckbox ? harvestCyclicCheckbox.checked : false;
@@ -473,6 +480,12 @@ const updateUI = () => {
                 const newMaleWeight = Math.max(0, oldMaleWeight - amount);
                 const femaleWeight = currentWeight * lastAdultRatio * (fCount / (fCount + mCount + 0.1));
                 simulatedAdultRatio = Math.max(0.01, (femaleWeight + newMaleWeight) / (currentWeight - amount));
+            } else if (category === 'SUBADULT' || category === 'MEDIUM' || category === 'SMALL' || category === 'BABY') {
+                // Approximate ratio change if we pull out non-adults
+                // Removing non-adults increases adult ratio slightly
+                const remainingWeight = Math.max(1, currentWeight - amount);
+                const adultWeight = currentWeight * lastAdultRatio;
+                simulatedAdultRatio = Math.min(0.99, adultWeight / remainingWeight);
             }
 
             // Se prelievo ciclico, moltiplica l'amount per le settimane nel deltaG
@@ -510,12 +523,29 @@ const updateUI = () => {
         // Suggeritore Ottimale
         const suggesterText = document.getElementById('optimalSuggesterText');
         if (suggesterText) {
+
+            // Calcolo MSY (Maximum Sustainable Yield) a 30 gg
+            // MSY = W_pred_naturale(30gg) - W_attuale
+            const naturalGrowth30 = calculatePrediction(currentWeight, 0, lastAdultRatio, 30, appState.params);
+            const msy30 = Math.max(0, naturalGrowth30 - currentWeight);
+            const msyEl = document.getElementById('msyValueText');
+            if (msyEl) {
+                msyEl.innerText = `${msy30.toFixed(1)} g`;
+            }
+
+            let amount = parseFloat(harvestAmountInput.value) || 0;
             if (fCount === 0) fCount = 1;
             const ratio = mCount / fCount;
             if (ratio > 0.4) {
-                suggesterText.innerText = `Rapporto maschi/femmine troppo alto (${ratio.toFixed(2)}). Si consiglia di prelevare Maschi Adulti per riequilibrare la colonia verso 1:3.`;
+                let suggestedMales = amount > 0 ? Math.round(amount / MASS.MALE) : Math.round(mCount - (fCount * 0.3));
+                if (suggestedMales > 0) {
+                    suggesterText.innerText = `Rapporto maschi/femmine troppo alto (${ratio.toFixed(2)}). Per il tuo prelievo, ti conviene raccogliere circa ${suggestedMales} Maschi Adulti. Questo aiuterà a bilanciare il Rapporto Sessuale portandolo verso 1:3.`;
+                } else {
+                    suggesterText.innerText = `Rapporto maschi/femmine troppo alto (${ratio.toFixed(2)}). Si consiglia di prelevare Maschi Adulti per riequilibrare la colonia verso 1:3.`;
+                }
             } else if (medCount + smCount > (saCount + fCount + mCount) * 2) {
-                suggesterText.innerText = `Eccesso di Neanidi. Si consiglia un prelievo leggero di Neanidi Medie per evitare futuri colli di bottiglia spaziali (sovraffollamento).`;
+                let suggestedNymphs = amount > 0 ? Math.round(amount / MASS.MEDIUM) : Math.round(medCount * 0.2);
+                suggesterText.innerText = `Eccesso di Neanidi. Si consiglia un prelievo di circa ${suggestedNymphs} Neanidi Medie per evitare futuri colli di bottiglia spaziali (sovraffollamento).`;
             } else {
                 suggesterText.innerText = `Colonia ben bilanciata. Prelievo generico raccomandato per mantenere stabile la piramide demografica.`;
             }
@@ -537,7 +567,7 @@ const updateUI = () => {
     if (alarmCard && alarmText) {
         if (bCount < smCount * 0.5 && latest.total_weight > 50) {
             alarmCard.style.display = 'block';
-            alarmText.innerText = "Allarme: Carenza drastica di Micro-Neanidi. Previsto vuoto demografico tra 2-3 mesi.";
+            alarmText.innerText = "Allarme: Carenza drastica di Micro-Neanidi. Previsto vuoto demografico tra 2-3 mesi. Si avrà una carenza drastica di sub-adulti disponibili al prelievo.";
         } else if (saCount < fCount * 0.2 && fCount > 10) {
             alarmCard.style.display = 'block';
             alarmText.innerText = "Allarme: Pochissime Sub-Adulte. Rischio di calo riproduttivo imminente (mancato rimpiazzo adulte).";
@@ -551,13 +581,32 @@ const updateUI = () => {
     const maturationText = document.getElementById('maturationTimerText');
     if (maturationCard && maturationText) {
         maturationCard.style.display = 'block';
-        // Trova il picco demografico tra le neanidi e stima i giorni
-        if (medCount > smCount && medCount > saCount) {
-            maturationText.innerText = "Il picco attuale (Neanidi Medie) impiegherà circa 25-35 giorni per mutare in Sub-Adulte.";
-        } else if (smCount > medCount && smCount > bCount) {
-            maturationText.innerText = "Il picco attuale (Neanidi Piccole) impiegherà circa 30-40 giorni per mutare in Medie.";
-        } else if (bCount > smCount) {
-            maturationText.innerText = "Forte presenza di nascite. Il picco raggiungerà la taglia Media in circa 60-70 giorni.";
+        // Base growth rates could be derived from theta2, but simplified for now based on average Dubia lifecycle
+        // Baby -> Small (30 days) -> Medium (30 days) -> Sub-Adult (40 days) -> Adult
+
+        let daysToNext = 30; // default
+        let baseMsg = "";
+
+        // Find the current peak
+        const pops = [
+            { name: "Micro-Neanidi", count: bCount, next: "Neanidi Piccole", days: 30 },
+            { name: "Neanidi Piccole", count: smCount, next: "Neanidi Medie", days: 30 },
+            { name: "Neanidi Medie", count: medCount, next: "Sub-Adulte", days: 40 },
+            { name: "Sub-Adulte", count: saCount, next: "Adulte", days: 30 }
+        ];
+
+        pops.sort((a, b) => b.count - a.count);
+        const peak = pops[0];
+
+        // Calcola i giorni in base a theta2 e temperatura/condizioni.
+        // Use an inverse relation to health index / theta2.
+        // Higher theta2 = faster growth.
+        // Let's create a "growth multiplier" based on theta2 (default 0.01)
+        const growthSpeed = Math.max(0.5, Math.min(2.0, appState.params.theta2 / 0.01));
+        const estimatedDays = Math.round(peak.days / growthSpeed);
+
+        if (peak.count > (totalCount * 0.2)) { // if peak is significant
+            maturationText.innerText = `Il picco attuale (${peak.name}) impiegherà circa ${estimatedDays} giorni per mutare in ${peak.next}.`;
         } else {
             maturationText.innerText = "Distribuzione stabile. Nessun picco imminente rilevato.";
         }
@@ -659,6 +708,24 @@ const updateUI = () => {
         tbody.appendChild(row);
     });
 
+
+    // Harvest History Table
+    const harvestTbody = document.querySelector('#harvestHistoryTable tbody');
+    if (harvestTbody) {
+        harvestTbody.innerHTML = '';
+        reversedMeasurements.forEach((m) => {
+            if (m.harvest_amount > 0) {
+                const hRow = document.createElement('tr');
+                hRow.innerHTML = `
+                    <td>${m.date}</td>
+                    <td style="color: var(--alert-red);">${m.harvest_amount.toFixed(1)}</td>
+                    <td style="max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${m.notes || ''}">${m.notes || '-'}</td>
+                `;
+                harvestTbody.appendChild(hRow);
+            }
+        });
+    }
+
     updateCharts();
 };
 
@@ -737,10 +804,12 @@ const updateCharts = () => {
                         },
                         afterBody: function(tooltipItems) {
                             const dataIndex = tooltipItems[0].dataIndex;
+                            let text = '';
                             if (notesData[dataIndex]) {
-                                return '\nNote: ' + notesData[dataIndex];
+                                text += '\nNote: ' + notesData[dataIndex];
                             }
-                            return '';
+                            // Add extra information if available
+                            return text;
                         }
                     }
                 }
