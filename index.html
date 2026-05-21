@@ -90,7 +90,7 @@
                             <span class="param-value" id="theta2Value">0.10</span>
                         </div>
                         <div class="param" style="grid-column: span 2;">
-                            <span class="param-label">θ₃ (Mortalità Fisiologica Mensile)</span>
+                            <span class="param-label">Fattore di Mortalità Fisiologica (Mensile)</span>
                             <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 0.25rem;">
                                 <input type="number" id="inputMortality" class="input-standard" style="width: 80px;" min="0" max="100" step="0.1" value="1.5">
                                 <span>%</span>
@@ -131,6 +131,13 @@
             <div class="card" id="harvestSimulatorCard">
                 <h3>Simulatore di Prelievo (Harvest)</h3>
 
+                <div style="margin-bottom: 1rem; padding: 0.75rem; background: rgba(243, 156, 18, 0.1); border: 1px solid #f39c12; border-radius: 8px;">
+                    <span style="font-size: 0.9rem; color: #f39c12; font-weight: 600;">Soglia di Sostenibilità (MSY) a 30 gg:</span>
+                    <strong id="msyValueText" style="font-size: 1.2rem; color: #f39c12; margin-left: 0.5rem;">-- g</strong>
+                    <p style="font-size: 0.75rem; color: #f39c12; margin-top: 0.25rem; margin-bottom: 0;">Biomassa massima prelevabile in 30 giorni senza mandare la colonia in declino.</p>
+                </div>
+
+
                 <div class="form-group" style="margin-bottom: 0.5rem;">
                     <label>Modalità di Prelievo:</label>
                     <select id="harvestCategory" class="input-standard" style="margin-bottom: 0.5rem;">
@@ -139,6 +146,8 @@
                         <option value="FEMALE">Solo Femmine Adulte (2.5g)</option>
                         <option value="SUBADULT">Solo Sub-Adulte (1.6g)</option>
                         <option value="MEDIUM">Solo Neanidi Medie (0.8g)</option>
+                        <option value="SMALL">Solo Neanidi Piccole (0.3g)</option>
+                        <option value="BABY">Solo Micro-Neanidi (0.1g)</option>
                     </select>
                 </div>
 
@@ -290,6 +299,27 @@
                     </table>
                 </div>
             </div>
+
+            <div class="card" style="margin-top: 1rem;">
+                <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem;">
+                    <h3 style="margin: 0;">Registro Storico dei Prelievi Effettivi</h3>
+                </div>
+                <div class="table-container">
+                    <table id="harvestHistoryTable">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Prelievo (g)</th>
+                                <th>Note</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Generato via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
         </section>
     </main>
 
