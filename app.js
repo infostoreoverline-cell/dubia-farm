@@ -80,24 +80,37 @@ const loadInitialData = async () => {
     try {
         showNotification("Sincronizzazione", "Download dati dal cloud...", "success");
         const response = await fetch(GAS_URL);
-        const data = await response.json();
-        if (Array.isArray(data) && data.length > 0) {
-            appState.measurements = data.map(m => ({
-                ...m,
-                total_weight: parseFloat(m.total_weight) || 0,
-                food_amount: parseFloat(m.food_amount) || 0,
-                harvest_amount: parseFloat(m.harvest_amount) || 0,
-                adult_ratio: parseFloat(m.adult_ratio) || 0,
-                predicted_weight: parseFloat(m.predicted_weight) || 0,
-                health_index: parseFloat(m.health_index) || 0,
-                is_new_blood: m.is_new_blood === 'true' || m.is_new_blood === true
-            })).sort((a, b) => new Date(a.date) - new Date(b.date));
-            showNotification("Sincronizzazione", "Dati cloud caricati con successo.", "success");
-            return;
+
+        if (!response.ok) {
+            console.warn(`Cloud fetch returned HTTP ${response.status}. URL might be invalid or permissions missing.`);
+            if (response.status === 401 || response.status === 403) {
+                showNotification("Errore Cloud", "Accesso negato al Cloud. Verifica permessi o URL di Google Apps Script.", "error");
+            } else if (response.status === 404) {
+                showNotification("Errore Cloud", "URL Cloud non trovato. Verifica il link Google Apps Script.", "error");
+            } else {
+                showNotification("Offline", "Caricamento dati locali (errore server cloud).", "warning");
+            }
+        } else {
+            const data = await response.json();
+            if (Array.isArray(data) && data.length > 0) {
+                appState.measurements = data.map(m => ({
+                    ...m,
+                    total_weight: parseFloat(m.total_weight) || 0,
+                    food_amount: parseFloat(m.food_amount) || 0,
+                    harvest_amount: parseFloat(m.harvest_amount) || 0,
+                    adult_ratio: parseFloat(m.adult_ratio) || 0,
+                    predicted_weight: parseFloat(m.predicted_weight) || 0,
+                    health_index: parseFloat(m.health_index) || 0,
+                    is_new_blood: m.is_new_blood === 'true' || m.is_new_blood === true
+                })).sort((a, b) => new Date(a.date) - new Date(b.date));
+                showNotification("Sincronizzazione", "Dati cloud caricati con successo.", "success");
+                return;
+            }
         }
     } catch (e) {
         console.warn("Could not fetch from GAS, falling back to local DB.", e);
-        showNotification("Offline", "Caricamento dati locali (offline).", "warning");
+        // Only show offline if it's a real network error (fetch threw an exception)
+        showNotification("Offline", "Nessuna connessione. Caricamento dati locali.", "warning");
     }
 
     // Load measurements from local fallback
@@ -128,12 +141,21 @@ const saveMeasurement = async (measurement) => {
             method: 'POST',
             body: JSON.stringify(measurement)
         });
-        const result = await response.json();
-        if (result.id) {
-            measurement.id = result.id;
+
+        if (!response.ok) {
+            console.error(`Cloud save returned HTTP ${response.status}. Check GAS_URL and permissions.`);
+            if (response.status === 401 || response.status === 403) {
+                 showNotification("Errore Salvataggio Cloud", "Accesso negato. Dati salvati solo in locale.", "error");
+            }
+        } else {
+            const result = await response.json();
+            if (result && result.id) {
+                measurement.id = result.id;
+            }
         }
     } catch (e) {
         console.error("Failed to save to Cloud:", e);
+        showNotification("Offline", "Impossibile contattare il server Cloud. Dati salvati in locale.", "warning");
     }
 
     // Still save locally
@@ -911,8 +933,8 @@ document.addEventListener('click', (e) => {
                 <h2 style="color: var(--alert-red);">Conferma Eliminazione</h2>
                 <p>Sei sicuro di voler eliminare questa singola rilevazione?</p>
                 <div class="modal-actions">
-                    <button type="button" class="btn-standard btn-cancel" class="btnCancelDelRow">Annulla</button>
-                    <button type="button" class="btn-standard btn-danger" class="btnConfirmDelRow">Procedi</button>
+                    <button type="button" class="btn-standard btn-cancel btnCancelDelRow">Annulla</button>
+                    <button type="button" class="btn-standard btn-danger btnConfirmDelRow">Procedi</button>
                 </div>
             </div>
         `;
