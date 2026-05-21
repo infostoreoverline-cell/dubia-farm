@@ -1,25 +1,49 @@
+var SHEET_NAME = 'Foglio1';
+
 function doGet(e) {
-  // Configura la risposta iniziale (es. leggendo dai fogli Google)
-  var risposta = { status: "success", message: "Dati recuperati con successo", data: [] };
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+    var data = sheet.getDataRange().getValues();
+    var headers = data[0];
+    var result = [];
 
-  // Aggiungi qui la logica per leggere i dati dal tuo Google Sheet
-  // ...
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      var rowData = {};
+      for (var j = 0; j < headers.length; j++) {
+        rowData[headers[j]] = row[j];
+      }
+      result.push(rowData);
+    }
 
-  // Ritorna l'output formattato come JSON (gestione base per Vercel/CORS)
-  return ContentService.createTextOutput(JSON.stringify(risposta))
-    .setMimeType(ContentService.MimeType.JSON);
+    var risposta = { status: "success", message: "Dati recuperati con successo", data: result };
+
+    return ContentService.createTextOutput(JSON.stringify(risposta))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    var errore = { status: "error", message: err.toString() };
+    return ContentService.createTextOutput(JSON.stringify(errore))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 }
 
 function doPost(e) {
   var risposta = { status: "error", message: "Richiesta non valida" };
 
   try {
-    // Se i dati vengono inviati come JSON nel body della richiesta
     if (e.postData && e.postData.contents) {
       var datiRicevuti = JSON.parse(e.postData.contents);
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
 
-      // Aggiungi qui la logica per scrivere i dati nel tuo Google Sheet
-      // ...
+      var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+      var newRow = [];
+
+      for (var i = 0; i < headers.length; i++) {
+        var header = headers[i];
+        newRow.push(datiRicevuti[header] !== undefined ? datiRicevuti[header] : "");
+      }
+
+      sheet.appendRow(newRow);
 
       risposta = { status: "success", message: "Dati salvati con successo" };
     }
@@ -27,12 +51,10 @@ function doPost(e) {
     risposta = { status: "error", message: err.toString() };
   }
 
-  // Ritorna l'output formattato come JSON
   return ContentService.createTextOutput(JSON.stringify(risposta))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// Opzionale, ma spesso consigliato per la gestione preflight delle richieste CORS
 function doOptions(e) {
   return ContentService.createTextOutput("")
     .setMimeType(ContentService.MimeType.TEXT);
