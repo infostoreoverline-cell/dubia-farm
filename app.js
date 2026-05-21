@@ -92,18 +92,25 @@ const loadInitialData = async () => {
                 showNotification("Offline", "Caricamento dati locali (errore server cloud).", "warning");
             }
         } else {
-            const data = await response.json();
+            const jsonResponse = await response.json();
+            const data = jsonResponse.data || jsonResponse; // Handle both {data: [...]} and [...]
             if (Array.isArray(data) && data.length > 0) {
                 appState.measurements = data.map(m => ({
                     ...m,
-                    total_weight: parseFloat(m.total_weight) || 0,
+                    total_weight: parseFloat(m.total_weight) || parseFloat(m.Biomassa) || 0, // Fallback to sheet headers if needed
                     food_amount: parseFloat(m.food_amount) || 0,
                     harvest_amount: parseFloat(m.harvest_amount) || 0,
                     adult_ratio: parseFloat(m.adult_ratio) || 0,
                     predicted_weight: parseFloat(m.predicted_weight) || 0,
                     health_index: parseFloat(m.health_index) || 0,
                     is_new_blood: m.is_new_blood === 'true' || m.is_new_blood === true
-                })).sort((a, b) => new Date(a.date) - new Date(b.date));
+                })).sort((a, b) => new Date(a.date || a['Data Reale']) - new Date(b.date || b['Data Reale']));
+
+                // Map Data Reale to date if needed
+                appState.measurements.forEach(m => {
+                    if(!m.date && m['Data Reale']) m.date = m['Data Reale'];
+                });
+
                 showNotification("Sincronizzazione", "Dati cloud caricati con successo.", "success");
                 return;
             }
@@ -185,12 +192,12 @@ const saveMeasurement = async (measurement) => {
 const seedDataIfEmpty = async () => {
     if (appState.measurements.length === 0) {
         console.log("Seeding database with initial data...");
-        const seedData = [
+                const seedData = [
             { date: '2026-01-01', weight: 600, foodAmount: 50, adultRatio: 0.35, notes: 'Dati Storici' },
-            { date: '2026-02-01', weight: 900, foodAmount: 150, adultRatio: 0.35, notes: 'Dati Storici' },
-            { date: '2026-03-01', weight: 1150, foodAmount: 120, adultRatio: 0.35, notes: 'Dati Storici' },
-            { date: '2026-03-20', weight: 1420, foodAmount: 180, adultRatio: 0.35, notes: 'Dati Storici' },
-            { date: '2026-04-10', weight: 1520, foodAmount: 60, adultRatio: 0.35, notes: 'Dati Storici' },
+            { date: '2026-02-05', weight: 950, foodAmount: 150, adultRatio: 0.35, notes: 'Dati Storici' },
+            { date: '2026-03-08', weight: 1250, foodAmount: 120, adultRatio: 0.35, notes: 'Dati Storici' },
+            { date: '2026-03-21', weight: 1420, foodAmount: 180, adultRatio: 0.35, notes: 'Dati Storici' },
+            { date: '2026-04-11', weight: 1520, foodAmount: 60, adultRatio: 0.35, notes: 'Dati Storici' },
             { date: '2026-05-01', weight: 1850, foodAmount: 200, adultRatio: 0.35, notes: 'Dati Storici' }
         ];
 

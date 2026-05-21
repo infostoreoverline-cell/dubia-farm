@@ -4,6 +4,12 @@ function doGet(e) {
   try {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
     var data = sheet.getDataRange().getValues();
+
+    if (data.length <= 1) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: [] }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     var headers = data[0];
     var result = [];
 
