@@ -226,7 +226,7 @@ const calculatePrediction = (lastWeight, foodAmount, adultRatio, delta_g, params
     return Math.max(0, w_pred);
 };
 
-const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, notes, harvestAmount = 0, isNewBlood = false) => {
+const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, notes, harvestAmount = 0, isNewBlood = false, isManualSubmit = false) => {
     const lastMeasurement = appState.measurements.length > 0 
         ? appState.measurements[appState.measurements.length - 1] 
         : null;
@@ -236,10 +236,9 @@ const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, n
     let delta_g = 30; // default for the first measurement if needed
 
     if (lastMeasurement) {
-        const d1 = new Date(lastMeasurement.date);
-        const d2 = new Date(date);
-        const timeDiff = Math.abs(d2.getTime() - d1.getTime());
-        delta_g = Math.max(1, Math.ceil(timeDiff / (1000 * 3600 * 24))); // Ensure at least 1 day to avoid 0
+        const dataUltimaPesata = new Date(lastMeasurement.date);
+        const dataTargetFutura = new Date(date);
+        delta_g = Math.max(0, (dataTargetFutura - dataUltimaPesata) / (1000 * 60 * 60 * 24));
 
         predictedWeight = calculatePrediction(lastMeasurement.total_weight, foodAmount, adultRatio, delta_g, appState.params, harvestAmount);
         
@@ -250,15 +249,17 @@ const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, n
         const tempoProporzionale = delta_g / 30;
 
         // 2. Discesa del Gradiente per ottimizzare i parametri
-        const newTheta1 = appState.params.theta1 - (error * foodAmount * ALPHA);
-        const newTheta2 = appState.params.theta2 - (error * pesoNeanidiIniziale * tempoProporzionale * ALPHA);
-        
-        appState.params.theta1 = Math.max(0.01, newTheta1); // Prevent negative efficiencies, lower bound 0.01
-        appState.params.theta2 = Math.max(0, newTheta2);
-        saveParams(appState.params);
+        if (isManualSubmit) {
+            const newTheta1 = appState.params.theta1 - (error * foodAmount * ALPHA);
+            const newTheta2 = appState.params.theta2 - (error * pesoNeanidiIniziale * tempoProporzionale * ALPHA);
+
+            appState.params.theta1 = Math.max(0.01, newTheta1); // Prevent negative efficiencies, lower bound 0.01
+            appState.params.theta2 = Math.max(0.01, newTheta2);
+            saveParams(appState.params);
+        }
 
         // Health Index: (Real / Pred) * 100
-        healthIndex = (realWeight / predictedWeight) * 100;
+        healthIndex = predictedWeight > 0 ? (realWeight / predictedWeight) * 100 : 100;
         
         checkHealthThresholds(healthIndex);
     }
@@ -1169,7 +1170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const notes = document.getElementById('inputNotes').value;
         const harvestAmount = parseFloat(document.getElementById('inputHarvestAmount')?.value) || 0;
 
-        await processNewMeasurement(date, weight, foodAmount, adultRatio, notes, harvestAmount, false);
+        await processNewMeasurement(date, weight, foodAmount, adultRatio, notes, harvestAmount, false, true);
         
         modal.classList.remove('active');
         form.reset();
