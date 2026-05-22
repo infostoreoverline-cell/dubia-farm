@@ -258,9 +258,15 @@ const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, n
 
             checkHealthThresholds(healthIndex);
         } else {
-            // For purely informational events (cibo, prelievo), we update the real weight to the predicted weight
-            // so the gradient descent does not run with false delta=0.
-            realWeight = predictedWeight;
+            // For purely informational events (cibo, prelievo), we check if real weight was provided
+            // (like when a prelievo is dynamically subtracting from the total).
+            // se l'evento è un prelievo, il realWeight passato sarà già stato sottratto.
+            // altrimenti per cibo teniamo il predicted.
+            if (eventType === 'prelievo') {
+                // Keep the realWeight passed into the function (which already had the harvest subtracted)
+            } else {
+                realWeight = predictedWeight;
+            }
             healthIndex = lastMeasurement.health_index; // Maintain last health index
         }
     }
@@ -1350,25 +1356,29 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.body.removeChild(confirmModal);
 
                 const today = new Date().toISOString().split('T')[0];
-                const lastWeight = appState.measurements.length > 0 ?
+                let lastWeight = appState.measurements.length > 0 ?
                     appState.measurements[appState.measurements.length - 1].total_weight : 0;
 
-                const newEntry = {
-                    date: today,
-                    total_weight: lastWeight, // Keep weight same, it's just a harvest record
-                    food_amount: 0,
-                    harvest_amount: amount,
-                    adult_ratio: appState.params.manualCalibrations ? null : 0.35, // Will use memory or default
-                    event_type: 'prelievo',
-                    notes: noteStr
-                };
+                // Subtract the harvest amount immediately from the current weight
+                // so it reflects as an actual deduction, not a future projection.
+                const newCurrentWeight = Math.max(0, lastWeight - amount);
 
                 const btn = document.getElementById('btnConfirmHarvestSim');
                 const originalText = btn.innerText;
                 btn.innerText = "Salvataggio...";
                 btn.disabled = true;
 
-                await processNewMeasurement(newEntry);
+                await processNewMeasurement(
+                    today,
+                    newCurrentWeight,
+                    0,
+                    appState.params.manualCalibrations ? null : 0.35,
+                    noteStr,
+                    amount,
+                    false,
+                    true,
+                    'prelievo'
+                );
 
                 btn.innerText = originalText;
                 btn.disabled = false;
