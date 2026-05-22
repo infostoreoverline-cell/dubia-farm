@@ -49,7 +49,20 @@ function doPost(e) {
           throw new Error("Foglio 'Timeline' non trovato");
       }
 
-      var headers = masterSheet.getRange(1, 1, 1, masterSheet.getLastColumn()).getValues()[0];
+      var lastColumn = masterSheet.getLastColumn();
+      var headers = [];
+
+      // Se il foglio è completamente vuoto, genera le intestazioni standard
+      if (lastColumn === 0) {
+        headers = [
+          "date", "total_weight", "event_type", "food_amount", "harvest_amount",
+          "adults", "nymphs", "males", "females", "medium_nymphs", "baby_nymphs"
+        ];
+        masterSheet.appendRow(headers);
+      } else {
+        headers = masterSheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+      }
+
       var newRow = [];
 
       for (var i = 0; i < headers.length; i++) {
