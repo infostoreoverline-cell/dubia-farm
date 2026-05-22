@@ -192,23 +192,6 @@ const saveMeasurement = async (measurement) => {
     });
 };
 
-const seedDataIfEmpty = async () => {
-    if (appState.measurements.length === 0) {
-        console.log("Seeding database with initial data...");
-                const seedData = [
-            { date: '2026-01-01', weight: 600, foodAmount: 50, adultRatio: 0.35, notes: 'Dati Storici' },
-            { date: '2026-02-05', weight: 950, foodAmount: 150, adultRatio: 0.35, notes: 'Dati Storici' },
-            { date: '2026-03-08', weight: 1250, foodAmount: 120, adultRatio: 0.35, notes: 'Dati Storici' },
-            { date: '2026-03-21', weight: 1420, foodAmount: 180, adultRatio: 0.35, notes: 'Dati Storici' },
-            { date: '2026-04-11', weight: 1520, foodAmount: 60, adultRatio: 0.35, notes: 'Dati Storici' },
-            { date: '2026-05-01', weight: 1850, foodAmount: 200, adultRatio: 0.35, notes: 'Dati Storici' }
-        ];
-
-        for (const m of seedData) {
-            await processNewMeasurement(m.date, m.weight, m.foodAmount, m.adultRatio, m.notes);
-        }
-    }
-};
 
 
 // --- ML ENGINE (D.U.B.I.A.) ---
@@ -1022,7 +1005,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Init DB
     try {
         await initDB();
-        await seedDataIfEmpty();
         updateUI();
     } catch (e) {
         console.error("Failed to initialize app data", e);
