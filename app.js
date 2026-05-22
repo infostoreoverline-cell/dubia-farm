@@ -1309,6 +1309,78 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    const btnConfirmHarvestSim = document.getElementById('btnConfirmHarvestSim');
+    if (btnConfirmHarvestSim) {
+        btnConfirmHarvestSim.addEventListener('click', async () => {
+            const amount = parseFloat(document.getElementById('harvestAmount').value);
+            if (isNaN(amount) || amount <= 0) {
+                showNotification("Errore", "Inserisci una quantità valida da prelevare.", "error");
+                return;
+            }
+
+            const isCyclic = document.getElementById('harvestCyclic').checked;
+            const categoryElement = document.getElementById('harvestCategory');
+            const categoryText = categoryElement.options[categoryElement.selectedIndex].text;
+
+            let noteStr = `Prelievo: ${categoryText}`;
+            if (isCyclic) {
+                noteStr += " (Ciclico settimanale)";
+            }
+
+            // Using custom modal for confirmation instead of alert/confirm
+            const confirmModal = document.createElement('div');
+            confirmModal.className = 'modal-overlay active';
+            confirmModal.innerHTML = `
+                <div class="modal">
+                    <h2>Conferma Prelievo</h2>
+                    <p>Sei sicuro di voler registrare un prelievo reale di <strong>${amount} g</strong>?</p>
+                    <div style="display: flex; gap: 1rem; margin-top: 1.5rem; justify-content: flex-end;">
+                        <button id="btnCancelSimHarvest" class="btn-standard" style="background-color: var(--card-bg);">Annulla</button>
+                        <button id="btnConfirmSimHarvestAction" class="btn-standard btn-danger">Sì, Registra</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(confirmModal);
+
+            document.getElementById('btnCancelSimHarvest').addEventListener('click', () => {
+                document.body.removeChild(confirmModal);
+            });
+
+            document.getElementById('btnConfirmSimHarvestAction').addEventListener('click', async () => {
+                document.body.removeChild(confirmModal);
+
+                const today = new Date().toISOString().split('T')[0];
+                const lastWeight = appState.measurements.length > 0 ?
+                    appState.measurements[appState.measurements.length - 1].total_weight : 0;
+
+                const newEntry = {
+                    date: today,
+                    total_weight: lastWeight, // Keep weight same, it's just a harvest record
+                    food_amount: 0,
+                    harvest_amount: amount,
+                    adult_ratio: appState.params.manualCalibrations ? null : 0.35, // Will use memory or default
+                    event_type: 'prelievo',
+                    notes: noteStr
+                };
+
+                const btn = document.getElementById('btnConfirmHarvestSim');
+                const originalText = btn.innerText;
+                btn.innerText = "Salvataggio...";
+                btn.disabled = true;
+
+                await processNewMeasurement(newEntry);
+
+                btn.innerText = originalText;
+                btn.disabled = false;
+
+                // Reset amount in simulator
+                document.getElementById('harvestAmount').value = 0;
+
+                showNotification("Successo", `Prelievo di ${amount}g registrato.`, "success");
+            });
+        });
+    }
+
     const btnResetDB = document.getElementById('btnResetDB');
     if (btnResetDB) {
         btnResetDB.addEventListener('click', () => {
