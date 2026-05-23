@@ -429,18 +429,42 @@ const updateUI = () => {
     // Census calculation (based on mass distribution approximation) using LATEST REAL weight
     const w = latest.total_weight;
     
-    // Approximated mass distribution
-    const pesoAdulti = w * 0.35;
-    const pesoNeanidi = w * 0.65;
+    // Implement Dynamic Census Logic with Manual Calibrations
+    const calibs = appState.params.manualCalibrations || {};
+    let calibratedMass = 0;
 
-    let fCount = Math.round((pesoAdulti * 0.77) / 2.5);
-    let mCount = Math.round((pesoAdulti * 0.23) / 1.5);
-    let medCount = Math.round((pesoNeanidi * 0.70) / 0.8);
-    let bCount = Math.round((pesoNeanidi * 0.30) / 0.1);
+    // First isolate the mass of manually calibrated categories
+    for (const [cat, count] of Object.entries(calibs)) {
+        calibratedMass += count * MASS[cat];
+    }
 
-    // Set other categories to zero based on mathematical formula
-    let saCount = 0;
-    let smCount = 0;
+    // Calculate original proportions of mass for uncalibrated categories
+    const defaultRatios = {
+        FEMALE: 0.35 * 0.77, // Adult ratio * Female ratio
+        MALE: 0.35 * 0.23,
+        SUBADULT: 0,
+        MEDIUM: 0.65 * 0.70, // Nymph ratio * Medium ratio
+        SMALL: 0,
+        BABY: 0.65 * 0.30
+    };
+
+    let uncalibratedRatioSum = 0;
+    for (const cat in defaultRatios) {
+        if (calibs[cat] === undefined) {
+            uncalibratedRatioSum += defaultRatios[cat];
+        }
+    }
+
+    // Remaining biomass to distribute
+    const remainingW = Math.max(0, w - calibratedMass);
+
+    // Distribute remaining biomass
+    let fCount = calibs['FEMALE'] !== undefined ? calibs['FEMALE'] : Math.round((remainingW * (defaultRatios.FEMALE / uncalibratedRatioSum)) / MASS.FEMALE);
+    let mCount = calibs['MALE'] !== undefined ? calibs['MALE'] : Math.round((remainingW * (defaultRatios.MALE / uncalibratedRatioSum)) / MASS.MALE);
+    let saCount = calibs['SUBADULT'] !== undefined ? calibs['SUBADULT'] : 0;
+    let medCount = calibs['MEDIUM'] !== undefined ? calibs['MEDIUM'] : Math.round((remainingW * (defaultRatios.MEDIUM / uncalibratedRatioSum)) / MASS.MEDIUM);
+    let smCount = calibs['SMALL'] !== undefined ? calibs['SMALL'] : 0;
+    let bCount = calibs['BABY'] !== undefined ? calibs['BABY'] : Math.round((remainingW * (defaultRatios.BABY / uncalibratedRatioSum)) / MASS.BABY);
 
     let totalCount = fCount + mCount + saCount + medCount + smCount + bCount;
 
@@ -1131,6 +1155,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Apply a slight bump to theta2 to simulate learning from manual intervention
             appState.params.theta2 = appState.params.theta2 * 1.05;
+
+            if (!appState.params.manualCalibrations) {
+                appState.params.manualCalibrations = {};
+            }
+            appState.params.manualCalibrations[category] = count;
             saveParams(appState.params);
 
             // Record a calibration event
