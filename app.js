@@ -1499,3 +1499,11 @@ const showNotification = (title, message, type = "success") => {
         if(notif.parentElement) notif.remove();
     }, 5000);
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        calculatePrediction,
+        appState,
+        DEFAULT_PARAMS
+    };
+}
