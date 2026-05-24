@@ -514,3 +514,81 @@ button, input[type="text"], input[type="number"], input[type="date"], select, te
     outline: none;
     border-color: var(--accent-green);
 }
+
+/* Responsive Design for Mobile Devices */
+@media screen and (max-width: 768px) {
+    header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .health-indicator {
+        align-items: flex-start;
+    }
+
+    .cards-container {
+        grid-template-columns: 1fr;
+    }
+
+    .params-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .params-grid .param {
+        grid-column: 1 / -1 !important;
+    }
+
+    .tabs {
+        overflow-x: auto;
+        white-space: nowrap;
+        justify-content: flex-start;
+        padding: 0;
+    }
+
+    .tab-btn {
+        flex: 0 0 auto;
+        padding: 0.8rem 1rem;
+    }
+
+    .modal {
+        max-height: 90vh;
+        overflow-y: auto;
+        padding: 1.5rem;
+    }
+
+    .delta-g-card .slider-container {
+        flex-wrap: wrap;
+    }
+
+    .form-group .slider-container {
+        flex-wrap: wrap;
+    }
+
+    .stat-card .value {
+        font-size: 1.5rem;
+    }
+
+    .chart-card {
+        height: 250px;
+    }
+
+    .bottom-params-section {
+        margin-top: 1.5rem;
+        padding-top: 1rem;
+    }
+
+    .pyramid-container {
+        margin-top: 2rem;
+    }
+
+    .level-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
+    }
+
+    .notification-area {
+        width: 95%;
+    }
+}
