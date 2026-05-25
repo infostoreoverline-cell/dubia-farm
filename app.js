@@ -47,7 +47,8 @@ let appState = {
 
 // --- DATABASE (IndexedDB) ---
 const dbName = "DubiaDB";
-const dbVersion = 1;
+// Versione 2: aggiunto schema migration per garantire integrità su mobile
+const dbVersion = 2;
 let db;
 
 const initDB = () => {
@@ -56,11 +57,20 @@ const initDB = () => {
 
         request.onupgradeneeded = (event) => {
             db = event.target.result;
+            const oldVersion = event.oldVersion;
+
+            // Crea store misure se non esiste (v1+)
             if (!db.objectStoreNames.contains("measurements")) {
                 db.createObjectStore("measurements", { keyPath: "id", autoIncrement: true });
             }
+            // Crea store parametri se non esiste (v1+)
             if (!db.objectStoreNames.contains("parameters")) {
                 db.createObjectStore("parameters", { keyPath: "id" });
+            }
+            // Migration v1→v2: invalida i parametri salvati in modo che vengano
+            // rivalidati al prossimo caricamento (reset a DEFAULT_PARAMS se fuori range)
+            if (oldVersion === 1) {
+                console.info('[D.U.B.I.A.] Migration v1→v2: params will be revalidated on next load.');
             }
         };
 
@@ -76,32 +86,117 @@ const initDB = () => {
     });
 };
 
-const loadInitialData = async () => {
-    // Load parameters
-    const paramTx = db.transaction("parameters", "readonly");
-    const paramStore = paramTx.objectStore("parameters");
-    const paramReq = paramStore.get(1);
-    
-    paramReq.onsuccess = () => {
-        if (paramReq.result) {
-            appState.params = paramReq.result;
-        } else {
-            // Save defaults
-            saveParams(appState.params);
-        }
-    };
+/**
+ * validateAndMigrateParams — Valida i parametri caricati da IndexedDB.
+ *
+ * Garantisce che theta1 e theta2 siano nei range fisici del Teorema D.U.B.I.A.
+ * Se i valori sono fuori range (es. vecchi default 0.05 / 0.01), li resetta.
+ *
+ * @param {object} stored - Oggetto params caricato da IndexedDB
+ * @returns {object} Params validati e pronti all'uso
+ */
+const validateAndMigrateParams = (stored) => {
+    if (!stored || typeof stored !== 'object') return { ...DEFAULT_PARAMS };
 
-    // Try to load from Google Sheets first
+    const THETA1_MIN = 0.01;  const THETA1_MAX = 2.0;
+    const THETA2_MIN = 0.01;  const THETA2_MAX = 5.0;
+
+    const theta1 = parseFloat(stored.theta1);
+    const theta2 = parseFloat(stored.theta2);
+
+    const theta1Valid = isFinite(theta1) && theta1 >= THETA1_MIN && theta1 <= THETA1_MAX;
+    const theta2Valid = isFinite(theta2) && theta2 >= THETA2_MIN && theta2 <= THETA2_MAX;
+
+    if (!theta1Valid || !theta2Valid) {
+        console.warn(
+            `[D.U.B.I.A.] Params fuori range: θ₁=${theta1}, θ₂=${theta2}. ` +
+            `Reset a DEFAULT_PARAMS (θ₁=${DEFAULT_PARAMS.theta1}, θ₂=${DEFAULT_PARAMS.theta2}).`
+        );
+        return { ...DEFAULT_PARAMS };
+    }
+
+    return {
+        ...DEFAULT_PARAMS,  // base con campi non-theta
+        ...stored,          // sovrascrive con tutto il resto
+        theta1,             // usa i valori validati
+        theta2
+    };
+};
+
+/**
+ * rebuildParamsFromMeasurements — Ricostruisce theta1/theta2 riapplicando
+ * tutte le backpropagation in sequenza sulle misure cloud.
+ *
+ * Questo garantisce che mobile e desktop abbiano SEMPRE lo stesso stato appreso,
+ * indipendentemente da cosa c'è nel loro IndexedDB locale.
+ *
+ * @param {Array} measurements - Lista ordinata per data
+ * @returns {{ theta1: number, theta2: number }}
+ */
+const rebuildParamsFromMeasurements = (measurements) => {
+    const dubiaModule = D();
+    let theta1 = DEFAULT_PARAMS.theta1;
+    let theta2 = DEFAULT_PARAMS.theta2;
+
+    for (let i = 1; i < measurements.length; i++) {
+        const prev = measurements[i - 1];
+        const curr = measurements[i];
+
+        const d1 = new Date(prev.date);
+        const d2 = new Date(curr.date);
+        const delta_g = Math.max(1, (d2 - d1) / (1000 * 60 * 60 * 24));
+
+        const adultRatio = curr.adult_ratio || 0.35;
+        const foodAmount = curr.food_amount || 0;
+
+        const W_pred = dubiaModule
+            ? dubiaModule.feedForward(prev.total_weight, foodAmount, adultRatio, delta_g, theta1, theta2)
+            : prev.total_weight + (theta1 * foodAmount) + (theta2 * prev.total_weight * (1 - adultRatio) * (delta_g / 30));
+
+        const bp = dubiaModule
+            ? dubiaModule.backpropagate(theta1, theta2, W_pred, curr.total_weight, prev.total_weight, foodAmount, adultRatio, delta_g, ALPHA)
+            : { theta1: theta1 - ALPHA * (W_pred - curr.total_weight) * foodAmount,
+                theta2: theta2 - ALPHA * (W_pred - curr.total_weight) * prev.total_weight * (1 - adultRatio) * (delta_g / 30) };
+
+        // Clamp per stabilità numerica
+        theta1 = Math.max(0.001, Math.min(2.0, bp.theta1));
+        theta2 = Math.max(0.001, Math.min(5.0, bp.theta2));
+    }
+
+    return { theta1, theta2 };
+};
+
+const loadInitialData = async () => {
+    // ── STEP 1: Carica parametri da IndexedDB in modo SINCRONO (awaited) ──────
+    // BUG FIX: il vecchio codice usava un callback non-awaited, causando race
+    // condition con il fetch cloud che sovrascriveva i params a caso.
+    const storedParams = await new Promise((resolve) => {
+        const tx = db.transaction("parameters", "readonly");
+        const store = tx.objectStore("parameters");
+        const req = store.get(1);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror  = () => resolve(null);
+    });
+
+    // Valida i parametri: reset se fuori range D.U.B.I.A. (es. vecchi 0.05/0.01)
+    appState.params = validateAndMigrateParams(storedParams);
+    if (!storedParams) {
+        saveParams(appState.params); // Prima volta: salva i default
+    }
+
+    console.info(`[D.U.B.I.A.] Params caricati: θ₁=${appState.params.theta1.toFixed(4)}, θ₂=${appState.params.theta2.toFixed(4)}`);
+
+    // ── STEP 2: Prova a caricare le misure dal Cloud ─────────────────────────
     try {
         showNotification("Sincronizzazione", "Download dati dal cloud...", "success");
         const response = await fetch(GAS_URL, { redirect: "follow" });
 
         if (!response.ok) {
-            console.warn(`Cloud fetch returned HTTP ${response.status}. URL might be invalid or permissions missing.`);
+            console.warn(`Cloud fetch returned HTTP ${response.status}.`);
             if (response.status === 401 || response.status === 403) {
                 showNotification("Errore Cloud", "Accesso negato al Cloud. Verifica permessi o URL di Google Apps Script.", "error");
             } else if (response.status === 404) {
-                showNotification("Errore Cloud", "URL Cloud non trovato. Verifica il link Google Apps Script.", "error");
+                showNotification("Errore Cloud", "URL Cloud non trovato.", "error");
             } else {
                 showNotification("Offline", "Caricamento dati locali (errore server cloud).", "warning");
             }
@@ -109,27 +204,41 @@ const loadInitialData = async () => {
             const jsonResponse = await response.json();
 
             if (jsonResponse && jsonResponse.status === "error") {
-                showNotification("Errore Database Cloud", `Il server ha risposto: ${jsonResponse.message}. Assicurati che il foglio "Timeline" esista su Google Sheets.`, "alert");
+                showNotification("Errore Database Cloud", `Il server ha risposto: ${jsonResponse.message}.`, "alert");
                 throw new Error("Cloud database error: " + jsonResponse.message);
             }
 
-            const data = jsonResponse.data || jsonResponse; // Handle both {data: [...]} and [...]
+            const data = jsonResponse.data || jsonResponse;
             if (Array.isArray(data) && data.length > 0) {
                 appState.measurements = data.map(m => ({
                     ...m,
-                    total_weight: parseFloat(m.total_weight) || parseFloat(m.Biomassa) || 0, // Fallback to sheet headers if needed
-                    food_amount: parseFloat(m.food_amount) || 0,
-                    harvest_amount: parseFloat(m.harvest_amount) || 0,
-                    adult_ratio: parseFloat(m.adult_ratio) || 0,
+                    total_weight:     parseFloat(m.total_weight)     || parseFloat(m.Biomassa) || 0,
+                    food_amount:      parseFloat(m.food_amount)      || 0,
+                    harvest_amount:   parseFloat(m.harvest_amount)   || 0,
+                    adult_ratio:      parseFloat(m.adult_ratio)      || 0,
                     predicted_weight: parseFloat(m.predicted_weight) || 0,
-                    health_index: parseFloat(m.health_index) || 0,
-                    is_new_blood: m.is_new_blood === 'true' || m.is_new_blood === true
+                    health_index:     parseFloat(m.health_index)     || 0,
+                    is_new_blood:     m.is_new_blood === 'true' || m.is_new_blood === true
                 })).sort((a, b) => new Date(a.date || a['Data Reale']) - new Date(b.date || b['Data Reale']));
 
-                // Map Data Reale to date if needed
                 appState.measurements.forEach(m => {
-                    if(!m.date && m['Data Reale']) m.date = m['Data Reale'];
+                    if (!m.date && m['Data Reale']) m.date = m['Data Reale'];
                 });
+
+                // ── STEP 3: Ricostruisce theta1/theta2 dalle misure cloud ─────
+                // Questo è il fix principale della divergenza mobile/desktop:
+                // i parametri appresi vengono ricalcolati deterministicamente
+                // dal log delle misure, che è lo stesso su tutti i device.
+                if (appState.measurements.length > 1) {
+                    const rebuilt = rebuildParamsFromMeasurements(appState.measurements);
+                    appState.params.theta1 = rebuilt.theta1;
+                    appState.params.theta2 = rebuilt.theta2;
+                    saveParams(appState.params); // Persistiamo localmente
+                    console.info(
+                        `[D.U.B.I.A.] Params ricostruiti da ${appState.measurements.length} misure cloud: ` +
+                        `θ₁=${rebuilt.theta1.toFixed(6)}, θ₂=${rebuilt.theta2.toFixed(6)}`
+                    );
+                }
 
                 showNotification("Sincronizzazione", "Dati cloud caricati con successo.", "success");
                 return;
@@ -137,33 +246,33 @@ const loadInitialData = async () => {
         }
     } catch (e) {
         console.warn("Could not fetch from GAS, falling back to local DB.", e);
-        // Only show offline if it's a real network error (fetch threw an exception) and not a logical error we just threw
         if (!navigator.onLine) {
             showNotification("Offline", "Nessuna connessione a Internet. Caricamento dati locali.", "warning");
         } else if (!e.message || !e.message.includes("Cloud database error")) {
-            showNotification("Errore di Rete", "Impossibile contattare il server cloud, ma sei online. Potrebbe essere un problema del server o di CORS. Caricamento dati locali.", "warning");
+            showNotification("Errore di Rete", "Impossibile contattare il server cloud. Caricamento dati locali.", "warning");
         }
     }
 
-    // Load measurements from local fallback
+    // ── STEP 4 (fallback): Carica misure da IndexedDB locale ─────────────────
     return new Promise((resolve) => {
         const measTx = db.transaction("measurements", "readonly");
         const measStore = measTx.objectStore("measurements");
         const measReq = measStore.getAll();
-        
+
         measReq.onsuccess = () => {
             if (appState.measurements.length === 0) {
                 appState.measurements = measReq.result.sort((a, b) => new Date(a.date) - new Date(b.date));
             }
 
             if (appState.measurements.length === 0) {
-                showNotification("Nessun Dato Trovato", "Sia il Cloud che il Database locale sono vuoti. Clicca sul pulsante '+' in basso a destra per inserire la tua prima Rilevazione.", "warning");
+                showNotification("Nessun Dato Trovato", "Sia il Cloud che il Database locale sono vuoti. Clicca sul '+' per inserire la tua prima Rilevazione.", "warning");
             }
 
             resolve();
         };
     });
 };
+
 
 const saveParams = (params) => {
     const tx = db.transaction("parameters", "readwrite");
