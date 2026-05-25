@@ -1,17 +1,32 @@
 /**
  * D.U.B.I.A. Engine - Dynamic Updating Biomass Inference Algorithm
+ * 
+ * NOTA: Le formule matematiche core (Feed-Forward, Back-Propagation,
+ * Indice H, Diagnostica, Censimento) sono definite nel modulo separato
+ * dubia_module.js e accessibili tramite window.DUBIA.
+ * Questo file gestisce lo stato applicativo, il DB e la UI.
  */
 
 // Constants & Configurations
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzW12kzUhqKywlxLkXbV22ef9MwP9jp3t77yCg3t5YxBVRqIy3iYwX1UjgaCX0VLAJ8jA/exec";
-const ALPHA = 1e-6; // Learning rate for gradient descent
+
+// Tasso di apprendimento α per la discesa del gradiente
+const ALPHA = 1e-6;
+
+// Parametri di default (coincidono con le costanti del Teorema D.U.B.I.A.)
 const DEFAULT_PARAMS = {
-    theta1: 0.30, // Resa Alimentazione
-    theta2: 1.05, // Crescita Neanidi
-    mortalityRate: 1.5 // Mortalità Mensile (%)
+    theta1: 0.30,          // θ₁ iniziale: Resa Alimentazione
+    theta2: 1.05,          // θ₂ iniziale: Crescita Naturale Neanidi
+    mortalityRate: 1.5     // Mortalità Mensile (%)
 };
-const HEALTH_THRESHOLD_WARNING = 90;
-const HEALTH_THRESHOLD_ALERT = 75;
+
+// Soglie per l'Indice di Salute H = (θ₁ / θ₁*) × 100
+const HEALTH_THRESHOLD_WARNING = 90;  // H >= 90% → Ottimale
+const HEALTH_THRESHOLD_ALERT   = 75;  // H >= 75% e < 90% → Warning; H < 75% → Critico
+
+// Proxy al modulo matematico (window.DUBIA da dubia_module.js)
+// Fornisce un fallback sicuro se il modulo non è ancora caricato.
+const D = () => (typeof DUBIA !== 'undefined' ? DUBIA : null);
 
 // Demographic Mass Constants (in grams)
 const MASS = {
@@ -207,17 +222,41 @@ const saveMeasurement = async (measurement) => {
 
 // --- ML ENGINE (D.U.B.I.A.) ---
 
+/**
+ * FEED-FORWARD INFERENCE — delega al modulo dubia_module.js
+ * 
+ * Formula (da specifica):
+ *   Ŵ_{t+1} = W_t + (θ₁ · C_t) + [θ₂ · (W_t · (1 − A_t)) · (Δg / 30)] − harvest
+ * 
+ * NOTA: usa A_t dinamico (NON il 65% fisso della vecchia implementazione).
+ */
 const calculatePrediction = (lastWeight, foodAmount, adultRatio, delta_g, params, harvestAmount = 0) => {
-    const pesoNeanidiIniziale = lastWeight * 0.65;
-    const tempoProporzionale = delta_g / 30;
-
-    let w_pred = lastWeight +
-                 (foodAmount * params.theta1) +
-                 (pesoNeanidiIniziale * params.theta2 * tempoProporzionale);
-
-    // Sottrai prelievo
-    w_pred -= harvestAmount;
+    const dubiaModule = D();
+    if (dubiaModule) {
+        // Usa la formula certificata dal modulo matematico
+        return dubiaModule.feedForward(
+            lastWeight, foodAmount, adultRatio,
+            delta_g, params.theta1, params.theta2, harvestAmount
+        );
+    }
+    // Fallback di sicurezza (non dovrebbe mai essere raggiunto)
+    const W_neanidi = lastWeight * (1 - adultRatio);
+    const w_pred = lastWeight
+        + (params.theta1 * foodAmount)
+        + (params.theta2 * W_neanidi * (delta_g / 30))
+        - harvestAmount;
     return Math.max(0, w_pred);
+};
+
+/**
+ * Calcola l'Indice di Salute H(t) = (θ₁ / θ₁*) × 100
+ * 
+ * Delegato al modulo matematico. Θ₁* = 0.30 (valore storico ottimale).
+ */
+const computeHealthIndex = (theta1) => {
+    const dubiaModule = D();
+    if (dubiaModule) return dubiaModule.healthIndex(theta1);
+    return (theta1 / 0.30) * 100; // fallback
 };
 
 const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, notes, harvestAmount = 0, isNewBlood = false, isManualSubmit = false, eventType = 'pesata') => {
@@ -237,24 +276,47 @@ const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, n
         predictedWeight = calculatePrediction(lastMeasurement.total_weight, foodAmount, adultRatio, delta_g, appState.params, harvestAmount);
         
         if (eventType === 'pesata' || eventType === 'calibrazione' || eventType === 'nuovo_sangue') {
-            // 1. Calcolo dell'errore (Predizione del sistema - Realtà della bilancia)
-            const error = predictedWeight - realWeight;
+            // ── RETROPROPAGAZIONE DELL'ERRORE ──────────────────────────────────
+            // E = Ŵ_{t+1} − W_{reale}  (errore di predizione)
 
-            const pesoNeanidiIniziale = lastMeasurement.total_weight * 0.65;
-            const tempoProporzionale = delta_g / 30;
-
-            // 2. Discesa del Gradiente per ottimizzare i parametri
             if (isManualSubmit) {
-                const newTheta1 = appState.params.theta1 - (error * foodAmount * ALPHA);
-                const newTheta2 = appState.params.theta2 - (error * pesoNeanidiIniziale * tempoProporzionale * ALPHA);
-
-                appState.params.theta1 = Math.max(0.01, newTheta1); // Prevent negative efficiencies, lower bound 0.01
-                appState.params.theta2 = Math.max(0.01, newTheta2);
+                const dubiaModule = D();
+                if (dubiaModule) {
+                    // Usa le derivate parziali certificate dal modulo matematico:
+                    //   θ₁_new = θ₁_old − α · E · C_t
+                    //   θ₂_new = θ₂_old − α · E · [W_t · (1 − A_t) · (Δg / 30)]
+                    const bp = dubiaModule.backpropagate(
+                        appState.params.theta1,
+                        appState.params.theta2,
+                        predictedWeight,
+                        realWeight,
+                        lastMeasurement.total_weight,
+                        foodAmount,
+                        adultRatio,
+                        delta_g,
+                        ALPHA
+                    );
+                    appState.params.theta1 = bp.theta1;
+                    appState.params.theta2 = bp.theta2;
+                } else {
+                    // Fallback: calcolo diretto con derivate parziali corrette
+                    const E = predictedWeight - realWeight;
+                    const W_t_prev = lastMeasurement.total_weight;
+                    const At_prev  = adultRatio;
+                    // ∂E/∂θ₁ = C_t
+                    const newTheta1 = appState.params.theta1 - (ALPHA * E * foodAmount);
+                    // ∂E/∂θ₂ = W_t · (1 − A_t) · (Δg / 30)
+                    const grad2 = W_t_prev * (1 - At_prev) * (delta_g / 30);
+                    const newTheta2 = appState.params.theta2 - (ALPHA * E * grad2);
+                    appState.params.theta1 = Math.max(0.001, newTheta1);
+                    appState.params.theta2 = Math.max(0.001, newTheta2);
+                }
                 saveParams(appState.params);
             }
 
-            // Health Index: (Real / Pred) * 100
-            healthIndex = predictedWeight > 0 ? (realWeight / predictedWeight) * 100 : 100;
+            // ── INDICE DI SALUTE H(t) = (θ₁ / θ₁*) × 100 ─────────────────────
+            // θ₁* = 0.30 (valore storico ottimale — NON il rapporto reale/predetto)
+            healthIndex = computeHealthIndex(appState.params.theta1);
 
             checkHealthThresholds(healthIndex);
         } else {
@@ -290,10 +352,90 @@ const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, n
 
 const checkHealthThresholds = (healthIndex) => {
     if (healthIndex < HEALTH_THRESHOLD_ALERT) {
-        showNotification("ALLARME CRITICO", `L'Indice di Salute è sceso al ${healthIndex.toFixed(1)}%. Rilevato crollo di \u03B8\u2081: potenziale problema di qualità del cibo o disidratazione.`, "alert");
+        showNotification("ALLARME CRITICO 🚨", `Indice H = ${healthIndex.toFixed(1)}% (< 75%). θ₁ è crollato. Rilevare causa: inbreeding, stress o carenza nutrizionale. Aprire la tab Diagnostica.`, "alert");
     } else if (healthIndex < HEALTH_THRESHOLD_WARNING) {
-        showNotification("Attenzione", `L'Indice di Salute è al ${healthIndex.toFixed(1)}%. Monitorare la colonia.`, "warning");
+        showNotification("⚠️ Attenzione", `Indice H = ${healthIndex.toFixed(1)}% (< 90%). Monitorare θ₁ e θ₂. Aprire la tab Diagnostica.`, "warning");
     }
+};
+
+/**
+ * Aggiorna il pannello di Diagnostica Differenziale nell'UI.
+ * Viene chiamato dopo ogni aggiornamento dei parametri.
+ */
+const updateDiagnosticsPanel = () => {
+    const dubiaModule = D();
+    if (!dubiaModule) return;
+
+    const { theta1, theta2 } = appState.params;
+    const H = computeHealthIndex(theta1);
+    const diagnostics = dubiaModule.differentialDiagnostics(theta1, theta2, H);
+
+    const panel = document.getElementById('differentialDiagnosticsPanel');
+    if (!panel) return;
+
+    if (diagnostics.length === 0) {
+        panel.innerHTML = `
+            <div class="diag-ok">
+                <span class="diag-icon">✅</span>
+                <div>
+                    <strong>Sistema Ottimale</strong>
+                    <p>Tutti i parametri sono nei range nominali. Nessun intervento richiesto.</p>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    panel.innerHTML = diagnostics.map(d => `
+        <div class="diag-alert diag-${d.severity}">
+            <h4>${d.title}</h4>
+            <p class="diag-message">${d.message}</p>
+            <p class="diag-suggestion">${d.suggestion}</p>
+        </div>
+    `).join('');
+};
+
+/**
+ * Aggiorna la Tabella di Censimento Demografico nell'UI.
+ * Implementa il Modulo 4 con tutte le colonne richieste dalla specifica.
+ */
+const updateCensusTable = (W_t, A_t) => {
+    const dubiaModule = D();
+    const tbody = document.querySelector('#censusTable tbody');
+    if (!tbody) return;
+
+    let rows;
+    if (dubiaModule) {
+        const censusData = dubiaModule.census(W_t, A_t);
+        rows = dubiaModule.censusTable(censusData);
+    } else {
+        // Fallback: calcolo diretto
+        const W_adulti  = W_t * A_t;
+        const W_neanidi = W_t * (1 - A_t);
+        rows = [
+            { stage: 'Femmine Adulte',    N: Math.round(W_adulti * 0.77 / 2.5), biomassa_g: (W_adulti * 0.77).toFixed(1),  destinazione: 'Riproduttrici — mantenere' },
+            { stage: 'Maschi Adulti',     N: Math.round(W_adulti * 0.23 / 1.5), biomassa_g: (W_adulti * 0.23).toFixed(1),  destinazione: 'Riproduttori — verificare sex ratio' },
+            { stage: 'Neanidi Medie',     N: Math.round(W_neanidi * 0.70 / 0.8), biomassa_g: (W_neanidi * 0.70).toFixed(1), destinazione: 'Crescita — prelievo futuro' },
+            { stage: 'Micro-Neanidi (Baby)', N: Math.round(W_neanidi * 0.30 / 0.1), biomassa_g: (W_neanidi * 0.30).toFixed(1), destinazione: 'Riserva — non prelevare' }
+        ];
+    }
+
+    tbody.innerHTML = rows.map(r => {
+        let destColor = 'var(--text-muted)';
+        let destIcon  = '📊';
+        if (r.destinazione.includes('Riproduttr')) { destColor = 'var(--accent-purple)'; destIcon = '🔴'; }
+        if (r.destinazione.includes('prelievo'))   { destColor = 'var(--accent-green)';  destIcon = '✂️'; }
+        if (r.destinazione.includes('Riserva'))    { destColor = '#f1c40f';              destIcon = '🛡️'; }
+        if (r.destinazione.includes('sex ratio'))  { destColor = '#3498db';             destIcon = '⚖️'; }
+        return `
+            <tr>
+                <td><strong>${r.stage}</strong>${r.mass_avg ? `<br><small style="color:var(--text-muted)">${r.mass_avg} media · ${r.proportion || ''}</small>` : ''}</td>
+                <td class="census-n">${r.N.toLocaleString('it-IT')}</td>
+                <td>${parseFloat(r.biomassa_g).toFixed(1)} g</td>
+                <td style="color:${destColor}">${destIcon} ${r.destinazione}</td>
+            </tr>
+        `;
+    }).join('');
 };
 
 
@@ -398,11 +540,24 @@ const updateUI = () => {
         }
     }
 
+    // Indice H corrente (ricalcolato sempre dai parametri live)
+    const H_live = computeHealthIndex(appState.params.theta1);
     const healthEl = document.getElementById('healthValue');
-    healthEl.innerText = `${latest.health_index.toFixed(1)}%`;
+    healthEl.innerText = `${H_live.toFixed(1)}%`;
     healthEl.className = 'health-value';
-    if (latest.health_index < HEALTH_THRESHOLD_ALERT) healthEl.classList.add('alert');
-    else if (latest.health_index < HEALTH_THRESHOLD_WARNING) healthEl.classList.add('warning');
+    if (H_live < HEALTH_THRESHOLD_ALERT) healthEl.classList.add('alert');
+    else if (H_live < HEALTH_THRESHOLD_WARNING) healthEl.classList.add('warning');
+
+    // Aggiorna anche la barra/label di stato H nell'header
+    const healthIndicator = document.getElementById('healthIndicator');
+    if (healthIndicator) {
+        healthIndicator.className = 'health-indicator';
+        if (H_live >= HEALTH_THRESHOLD_WARNING) {
+            if (H_live >= HEALTH_THRESHOLD_WARNING && H_live < HEALTH_THRESHOLD_WARNING) {
+                healthIndicator.classList.add('warning');
+            }
+        }
+    }
 
     // FCR Calculation
     if (appState.measurements.length > 1) {
@@ -811,6 +966,33 @@ const updateUI = () => {
                 harvestTbody.appendChild(hRow);
             }
         });
+    }
+
+    // Aggiorna Diagnostica Differenziale
+    updateDiagnosticsPanel();
+
+    // Aggiorna Tabella Censimento Demografico (Modulo 4)
+    const latestForCensus = appState.measurements[appState.measurements.length - 1];
+    if (latestForCensus) {
+        updateCensusTable(
+            latestForCensus.total_weight,
+            latestForCensus.adult_ratio || 0.35
+        );
+    }
+
+    // Aggiorna il Pregnant Ratio basandosi sull'errore reale/predetto
+    if (appState.measurements.length > 1) {
+        const prev = appState.measurements[appState.measurements.length - 2];
+        const curr = appState.measurements[appState.measurements.length - 1];
+        const census = D() ? D().census(curr.total_weight, curr.adult_ratio || 0.35) : null;
+        if (census) {
+            // Stima femmine gravide: delta peso rispetto predetto / (0.4g * N_femmine)
+            const deltaOverPred = curr.total_weight - (curr.predicted_weight || curr.total_weight);
+            const maxExtra = census.N_femmine * 0.4;
+            const pregnantPct = maxExtra > 0 ? Math.min(100, Math.max(0, (deltaOverPred / maxExtra) * 100)) : 0;
+            const pregnantEl = document.getElementById('pregnantRatioValue');
+            if (pregnantEl) pregnantEl.innerText = `${pregnantPct.toFixed(1)} %`;
+        }
     }
 
     updateCharts();

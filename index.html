@@ -8,9 +8,12 @@
     <meta name="theme-color" content="#182B49">
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- D.U.B.I.A. Core Math Module (deve caricarsi PRIMA di app.js) -->
+    <script src="dubia_module.js"></script>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+
 </head>
 <body>
     <!-- HEADER -->
@@ -184,7 +187,38 @@
             </div>
 
             <div class="card">
-                <h3>Demografia Stimata</h3>
+                <h3>Censimento Demografico — Tabella di Output</h3>
+                <p class="subtitle-text">Calcolato secondo il Modulo 4 del Teorema D.U.B.I.A. &nbsp;·&nbsp; Aggiornato automaticamente ad ogni pesata</p>
+
+                <!-- Formula reference -->
+                <div class="formula-box" style="margin-bottom:1rem;">
+                    <div class="formula-row"><span class="formula-label">W_adulti</span><span class="formula-eq">= W_t × A_t</span></div>
+                    <div class="formula-row"><span class="formula-label">W_neanidi</span><span class="formula-eq">= W_t × (1 − A_t)</span></div>
+                    <div class="formula-row"><span class="formula-label">N_femmine</span><span class="formula-eq">= (W_adulti × 0.77) / 2.5g</span></div>
+                    <div class="formula-row"><span class="formula-label">N_maschi</span><span class="formula-eq">= (W_adulti × 0.23) / 1.5g</span></div>
+                    <div class="formula-row"><span class="formula-label">N_medie</span><span class="formula-eq">= (W_neanidi × 70%) / 0.8g</span></div>
+                    <div class="formula-row"><span class="formula-label">N_baby</span><span class="formula-eq">= (W_neanidi × 30%) / 0.1g</span></div>
+                </div>
+
+                <div class="table-container">
+                    <table id="censusTable">
+                        <thead>
+                            <tr>
+                                <th>Stadio Vitale</th>
+                                <th>Individui (N)</th>
+                                <th>Biomassa (g)</th>
+                                <th>Stato / Destinazione</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Inserisci una pesata per calcolare il censimento...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Distribuzione Visiva (Grafico)</h3>
                 <p class="subtitle-text">Calcolata in base alla biomassa totale e alle costanti specifiche.</p>
                 
                 <div class="chart-card" style="height: 250px; margin-bottom: 1rem;">
@@ -273,8 +307,38 @@
 
             <div class="card">
                 <h3>Storico Indice di Salute (H)</h3>
+                <p class="subtitle-text" style="margin-bottom:0.5rem;">H(t) = (θ₁ / θ₁*) × 100 &nbsp;·&nbsp; θ₁* = 0.30 (ottimale storico)</p>
+                <div class="h-threshold-legend" style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
+                    <span class="h-legend-item h-optimal">● ≥ 90% Ottimale</span>
+                    <span class="h-legend-item h-warning">● 75–89% Warning</span>
+                    <span class="h-legend-item h-critical">● &lt; 75% Critico</span>
+                </div>
                 <canvas id="healthChart"></canvas>
             </div>
+
+            <!-- DIAGNOSTICA DIFFERENZIALE (Modulo 3 - specifica) -->
+            <div class="card" style="margin-top:0;">
+                <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+                    <span style="font-size:1.5rem;">🔬</span>
+                    <div>
+                        <h3 style="margin:0;">Diagnostica Differenziale</h3>
+                        <p class="subtitle-text" style="margin:0;font-size:0.8rem;">Analisi automatica θ₁ e θ₂ · Aggiornata ad ogni pesata</p>
+                    </div>
+                </div>
+                <!-- Regole diagnostiche (sempre visibili come riferimento) -->
+                <div class="diag-rules">
+                    <div class="diag-rule"><span class="diag-rule-cond">θ₁ &lt; 80% del default</span><span class="diag-rule-arrow">→</span><span class="diag-rule-label theta1">Qualità Nutrizionale / Idratazione</span></div>
+                    <div class="diag-rule"><span class="diag-rule-cond">θ₂ &lt; 80% del default</span><span class="diag-rule-arrow">→</span><span class="diag-rule-label theta2">Stress Termico / Umidità</span></div>
+                    <div class="diag-rule"><span class="diag-rule-cond">H &lt; 75%</span><span class="diag-rule-arrow">→</span><span class="diag-rule-label critical">Senescenza / Inbreeding</span></div>
+                </div>
+                <div id="differentialDiagnosticsPanel" style="margin-top:1rem;">
+                    <div class="diag-ok">
+                        <span class="diag-icon">⏳</span>
+                        <div><strong>In attesa di dati...</strong><p>Inserisci almeno una pesata per attivare la diagnostica.</p></div>
+                    </div>
+                </div>
+            </div>
+
             <div class="card">
                 <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem;">
                     <h3 style="margin: 0;">Log Manutenzione & Pesate</h3>

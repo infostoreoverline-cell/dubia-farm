@@ -592,3 +592,147 @@ button, input[type="text"], input[type="number"], input[type="date"], select, te
         width: 95%;
     }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   D.U.B.I.A. — Nuovi Componenti UI (Moduli 3 e 4)
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Diagnostica Differenziale ─────────────────────────────── */
+.diag-ok {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: rgba(39, 174, 96, 0.08);
+    border: 1px solid rgba(39, 174, 96, 0.3);
+    border-radius: 10px;
+    animation: fadeIn 0.4s ease;
+}
+.diag-ok .diag-icon { font-size: 1.5rem; flex-shrink: 0; }
+.diag-ok strong { color: var(--accent-green); display: block; margin-bottom: 0.25rem; }
+.diag-ok p { font-size: 0.85rem; color: var(--text-muted); margin: 0; }
+
+.diag-alert {
+    padding: 1rem 1.25rem;
+    border-radius: 10px;
+    margin-bottom: 0.75rem;
+    border-left: 4px solid transparent;
+    animation: slideDown 0.3s ease;
+}
+.diag-alert:last-child { margin-bottom: 0; }
+
+.diag-alert.diag-warning {
+    background: rgba(242, 201, 76, 0.1);
+    border-left-color: #F2C94C;
+}
+.diag-alert.diag-warning h4 { color: #F2C94C; margin-bottom: 0.4rem; font-size: 0.95rem; }
+
+.diag-alert.diag-critical {
+    background: rgba(192, 41, 43, 0.12);
+    border-left-color: var(--alert-red);
+}
+.diag-alert.diag-critical h4 { color: var(--alert-red); margin-bottom: 0.4rem; font-size: 0.95rem; }
+
+.diag-message {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+    font-family: 'Courier New', monospace;
+    background: rgba(0,0,0,0.2);
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+}
+.diag-suggestion {
+    font-size: 0.85rem;
+    color: var(--text-main);
+    margin: 0;
+    padding-top: 0.25rem;
+}
+
+/* ── Regole diagnostiche (reference legend) ─────────────────── */
+.diag-rules {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.75rem;
+    background: rgba(0,0,0,0.15);
+    border-radius: 8px;
+    font-size: 0.8rem;
+}
+.diag-rule {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.diag-rule-cond {
+    font-family: 'Courier New', monospace;
+    color: var(--text-muted);
+    background: rgba(255,255,255,0.05);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+.diag-rule-arrow { color: var(--text-muted); }
+.diag-rule-label {
+    font-weight: 600;
+    font-size: 0.78rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+}
+.diag-rule-label.theta1 { color: #F2C94C; background: rgba(242, 201, 76, 0.15); }
+.diag-rule-label.theta2 { color: #3498db; background: rgba(52, 152, 219, 0.15); }
+.diag-rule-label.critical { color: var(--alert-red); background: rgba(192, 41, 43, 0.15); }
+
+/* ── Formula Box (Modulo 4) ─────────────────────────────────── */
+.formula-box {
+    background: rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem 1rem;
+}
+.formula-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+}
+.formula-label {
+    font-family: 'Courier New', monospace;
+    color: var(--accent-purple);
+    font-weight: 600;
+    white-space: nowrap;
+}
+.formula-eq {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
+/* ── Tabella Censimento ─────────────────────────────────────── */
+#censusTable .census-n {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--accent-green);
+    font-family: 'Courier New', monospace;
+}
+#censusTable tbody tr:hover {
+    background: rgba(255,255,255,0.03);
+}
+#censusTable tbody td:first-child strong {
+    color: var(--text-main);
+}
+
+/* ── Soglie H — legenda colori ─────────────────────────────── */
+.h-legend-item { font-size: 0.8rem; font-weight: 600; }
+.h-legend-item.h-optimal  { color: var(--accent-green); }
+.h-legend-item.h-warning  { color: #F2C94C; }
+.h-legend-item.h-critical { color: var(--alert-red); }
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media screen and (max-width: 600px) {
+    .formula-box { grid-template-columns: 1fr; }
+    .diag-rules  { font-size: 0.75rem; }
+}
