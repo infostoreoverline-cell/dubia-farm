@@ -396,27 +396,128 @@ const updateDiagnosticsPanel = () => {
 };
 
 /**
- * Aggiorna la Tabella di Censimento Demografico nell'UI.
- * Implementa il Modulo 4 con tutte le colonne richieste dalla specifica.
+ * calculateColonyMetrics — Funzione pura di calcolo (layout-agnostic).
+ * 
+ * Unico punto di verità per TUTTI i dati demografici, economici e di salute.
+ * Non legge mai il DOM, non dipende dalla larghezza dello schermo.
+ * Può essere chiamata da qualsiasi contesto (UI, grafico, tabella, mobile/desktop).
+ * 
+ * @param {number} W_t    - Biomassa totale reale (grammi)
+ * @param {number} A_t    - Rapporto adulti [0..1]
+ * @param {object} params - { theta1, theta2, manualCalibrations }
+ * @returns {ColonyMetrics} Oggetto immutabile con tutti i valori calcolati
  */
-const updateCensusTable = (W_t, A_t) => {
+const calculateColonyMetrics = (W_t, A_t, params) => {
+    const dubiaModule = D();
+
+    // ── Dati demografici dal Modulo 4 D.U.B.I.A. ────────────────────────────
+    let censusData;
+    if (dubiaModule) {
+        censusData = dubiaModule.census(W_t, A_t);
+    } else {
+        // Fallback: stesse formule del modulo
+        const W_adulti  = W_t * A_t;
+        const W_neanidi = W_t * (1 - A_t);
+        censusData = {
+            W_adulti, W_neanidi,
+            W_femmine:       W_adulti * 0.77,
+            W_maschi:        W_adulti * 0.23,
+            W_neanidi_medie: W_neanidi * 0.70,
+            W_neanidi_baby:  W_neanidi * 0.30,
+            N_femmine: Math.round(W_adulti * 0.77 / 2.5),
+            N_maschi:  Math.round(W_adulti * 0.23 / 1.5),
+            N_medie:   Math.round(W_neanidi * 0.70 / 0.8),
+            N_baby:    Math.round(W_neanidi * 0.30 / 0.1),
+            N_totale_adulti:  0, N_totale_neanidi: 0, N_totale: 0, sex_ratio: 0
+        };
+        censusData.N_totale_adulti  = censusData.N_femmine + censusData.N_maschi;
+        censusData.N_totale_neanidi = censusData.N_medie + censusData.N_baby;
+        censusData.N_totale         = censusData.N_totale_adulti + censusData.N_totale_neanidi;
+        censusData.sex_ratio        = censusData.N_femmine > 0 ? censusData.N_maschi / censusData.N_femmine : 0;
+    }
+
+    // Applica calibrazioni manuali se presenti (sovrascrivono il Modulo 4)
+    const calibs = (params && params.manualCalibrations) || {};
+    const fCount   = calibs['FEMALE']   !== undefined ? calibs['FEMALE']   : censusData.N_femmine;
+    const mCount   = calibs['MALE']     !== undefined ? calibs['MALE']     : censusData.N_maschi;
+    const saCount  = calibs['SUBADULT'] !== undefined ? calibs['SUBADULT'] : 0;
+    const medCount = calibs['MEDIUM']   !== undefined ? calibs['MEDIUM']   : censusData.N_medie;
+    const smCount  = calibs['SMALL']    !== undefined ? calibs['SMALL']    : 0;
+    const bCount   = calibs['BABY']     !== undefined ? calibs['BABY']     : censusData.N_baby;
+    const totalCount = fCount + mCount + saCount + medCount + smCount + bCount;
+
+    // ── Valore economico ────────────────────────────────────────────────────
+    const prices = { FEMALE: 0.50, MALE: 0.40, SUBADULT: 0.30, MEDIUM: 0.20, SMALL: 0.10, BABY: 0.05 };
+    const economicValue = (fCount * prices.FEMALE) + (mCount * prices.MALE)
+        + (saCount * prices.SUBADULT) + (medCount * prices.MEDIUM)
+        + (smCount * prices.SMALL)   + (bCount   * prices.BABY);
+
+    // ── Fabbisogno idrico ───────────────────────────────────────────────────
+    const waterNeed = W_t * 0.035; // 3.5% del peso vivo al giorno
+
+    // ── Indice H live ───────────────────────────────────────────────────────
+    const H_live = (params && params.theta1)
+        ? computeHealthIndex(params.theta1)
+        : 100;
+
+    // ── Timer maturazione (usa θ₂ come moltiplicatore di velocità) ──────────
+    // θ₂ default = 1.05 → speed = 1.0; θ₂ = 2.10 → speed = 2.0 (crescita doppia)
+    // Scaling: growthSpeed = θ₂ / θ₂_default = θ₂ / 1.05
+    const theta2 = (params && params.theta2) || 1.05;
+    const THETA2_DEFAULT = 1.05;
+    const growthSpeed = Math.max(0.5, Math.min(3.0, theta2 / THETA2_DEFAULT));
+
+    const maturStages = [
+        { name: 'Micro-Neanidi',   count: bCount,   next: 'Neanidi Medie',  baseDays: 30 },
+        { name: 'Neanidi Medie',   count: medCount,  next: 'Sub-Adulte',    baseDays: 40 },
+        { name: 'Sub-Adulte',      count: saCount,   next: 'Adulte',        baseDays: 30 },
+        { name: 'Neanidi Piccole', count: smCount,   next: 'Neanidi Medie', baseDays: 30 }
+    ];
+    maturStages.sort((a, b) => b.count - a.count);
+    const peakStage = maturStages[0];
+    const maturDays = Math.round(peakStage.baseDays / growthSpeed);
+    const maturMessage = (peakStage.count > totalCount * 0.2)
+        ? `Il picco attuale (${peakStage.name}) impiegherà circa ${maturDays} giorni per mutare in ${peakStage.next}. [θ₂=${theta2.toFixed(3)}]`
+        : 'Distribuzione stabile. Nessun picco imminente rilevato.';
+
+    return Object.freeze({
+        // Censimento (da DUBIA.census)
+        census: censusData,
+        // Conteggi (con eventuale override calibrazioni manuali)
+        fCount, mCount, saCount, medCount, smCount, bCount, totalCount,
+        // Metriche derivate
+        economicValue,
+        waterNeed,
+        H_live,
+        // Timer maturazione
+        maturMessage,
+        maturDays,
+        growthSpeed
+    });
+};
+
+/**
+ * Aggiorna la Tabella di Censimento Demografico nell'UI.
+ * Riceve metrics pre-calcolate da calculateColonyMetrics().
+ */
+const updateCensusTable = (W_t, A_t, metricsOverride) => {
     const dubiaModule = D();
     const tbody = document.querySelector('#censusTable tbody');
     if (!tbody) return;
 
     let rows;
     if (dubiaModule) {
-        const censusData = dubiaModule.census(W_t, A_t);
+        const censusData = metricsOverride ? metricsOverride.census : dubiaModule.census(W_t, A_t);
         rows = dubiaModule.censusTable(censusData);
     } else {
         // Fallback: calcolo diretto
         const W_adulti  = W_t * A_t;
         const W_neanidi = W_t * (1 - A_t);
         rows = [
-            { stage: 'Femmine Adulte',    N: Math.round(W_adulti * 0.77 / 2.5), biomassa_g: (W_adulti * 0.77).toFixed(1),  destinazione: 'Riproduttrici — mantenere' },
-            { stage: 'Maschi Adulti',     N: Math.round(W_adulti * 0.23 / 1.5), biomassa_g: (W_adulti * 0.23).toFixed(1),  destinazione: 'Riproduttori — verificare sex ratio' },
-            { stage: 'Neanidi Medie',     N: Math.round(W_neanidi * 0.70 / 0.8), biomassa_g: (W_neanidi * 0.70).toFixed(1), destinazione: 'Crescita — prelievo futuro' },
-            { stage: 'Micro-Neanidi (Baby)', N: Math.round(W_neanidi * 0.30 / 0.1), biomassa_g: (W_neanidi * 0.30).toFixed(1), destinazione: 'Riserva — non prelevare' }
+            { stage: 'Femmine Adulte',       mass_avg: '2.5g', proportion: 'A_t × S_f (77%)', N: Math.round(W_adulti * 0.77 / 2.5), biomassa_g: (W_adulti * 0.77).toFixed(1),  destinazione: 'Riproduttrici — mantenere' },
+            { stage: 'Maschi Adulti',        mass_avg: '1.5g', proportion: 'A_t × S_m (23%)', N: Math.round(W_adulti * 0.23 / 1.5), biomassa_g: (W_adulti * 0.23).toFixed(1),  destinazione: 'Riproduttori — verificare sex ratio' },
+            { stage: 'Neanidi Medie',        mass_avg: '0.8g', proportion: '(1−A_t) × 70%',   N: Math.round(W_neanidi * 0.70 / 0.8), biomassa_g: (W_neanidi * 0.70).toFixed(1), destinazione: 'Crescita — prelievo futuro' },
+            { stage: 'Micro-Neanidi (Baby)', mass_avg: '0.1g', proportion: '(1−A_t) × 30%',   N: Math.round(W_neanidi * 0.30 / 0.1), biomassa_g: (W_neanidi * 0.30).toFixed(1), destinazione: 'Riserva — non prelevare' }
         ];
     }
 
@@ -437,6 +538,7 @@ const updateCensusTable = (W_t, A_t) => {
         `;
     }).join('');
 };
+
 
 
 const updateDoubleScenarioChart = (harvestAmount, simulatedFuture, days) => {
@@ -581,76 +683,31 @@ const updateUI = () => {
         document.getElementById('fcrValue').innerText = "--";
     }
 
-    // Census calculation (based on mass distribution approximation) using LATEST REAL weight
-    const w = latest.total_weight;
-    
-    // Implement Dynamic Census Logic with Manual Calibrations
-    const calibs = appState.params.manualCalibrations || {};
-    let calibratedMass = 0;
+    // ── CALCOLO CENTRALIZZATO — un'unica chiamata pura, identica su ogni device ──
+    // calculateColonyMetrics() NON legge il DOM, NON usa window.innerWidth.
+    // I dati derivati (fCount, mCount, ecc.) vengono SEMPRE da questa funzione.
+    const metrics = calculateColonyMetrics(
+        latest.total_weight,
+        lastAdultRatio,
+        appState.params
+    );
 
-    // First isolate the mass of manually calibrated categories
-    for (const [cat, count] of Object.entries(calibs)) {
-        calibratedMass += count * MASS[cat];
-    }
+    const { fCount, mCount, saCount, medCount, smCount, bCount, totalCount } = metrics;
 
-    // Calculate original proportions of mass for uncalibrated categories
-    const defaultRatios = {
-        FEMALE: 0.35 * 0.77, // Adult ratio * Female ratio
-        MALE: 0.35 * 0.23,
-        SUBADULT: 0,
-        MEDIUM: 0.65 * 0.70, // Nymph ratio * Medium ratio
-        SMALL: 0,
-        BABY: 0.65 * 0.30
-    };
-
-    let uncalibratedRatioSum = 0;
-    for (const cat in defaultRatios) {
-        if (calibs[cat] === undefined) {
-            uncalibratedRatioSum += defaultRatios[cat];
-        }
-    }
-
-    // Remaining biomass to distribute
-    const remainingW = Math.max(0, w - calibratedMass);
-
-    // Distribute remaining biomass
-    let fCount = calibs['FEMALE'] !== undefined ? calibs['FEMALE'] : Math.round((remainingW * (defaultRatios.FEMALE / uncalibratedRatioSum)) / MASS.FEMALE);
-    let mCount = calibs['MALE'] !== undefined ? calibs['MALE'] : Math.round((remainingW * (defaultRatios.MALE / uncalibratedRatioSum)) / MASS.MALE);
-    let saCount = calibs['SUBADULT'] !== undefined ? calibs['SUBADULT'] : 0;
-    let medCount = calibs['MEDIUM'] !== undefined ? calibs['MEDIUM'] : Math.round((remainingW * (defaultRatios.MEDIUM / uncalibratedRatioSum)) / MASS.MEDIUM);
-    let smCount = calibs['SMALL'] !== undefined ? calibs['SMALL'] : 0;
-    let bCount = calibs['BABY'] !== undefined ? calibs['BABY'] : Math.round((remainingW * (defaultRatios.BABY / uncalibratedRatioSum)) / MASS.BABY);
-
-    let totalCount = fCount + mCount + saCount + medCount + smCount + bCount;
-
-    // Economic Value Calculator
-    // Prices per individual (approximate example prices in EUR)
-    const prices = {
-        FEMALE: 0.50,
-        MALE: 0.40,
-        SUBADULT: 0.30,
-        MEDIUM: 0.20,
-        SMALL: 0.10,
-        BABY: 0.05
-    };
-    const economicValue = (fCount * prices.FEMALE) + (mCount * prices.MALE) + (saCount * prices.SUBADULT) + (medCount * prices.MEDIUM) + (smCount * prices.SMALL) + (bCount * prices.BABY);
+    // ── Valore economico e fabbisogno idrico ─────────────────────────────────
     const economicValueEl = document.getElementById('economicValueValue');
-    if (economicValueEl) economicValueEl.innerText = `${economicValue.toFixed(2)} €`;
+    if (economicValueEl) economicValueEl.innerText = `${metrics.economicValue.toFixed(2)} €`;
 
-    // Water/Wet Food Need Calculator
-    // Recommendation: approx 20-30% of their body weight in wet food/water per week, roughly 3-4% per day.
-    const waterNeed = latest.total_weight * 0.035;
     const waterNeedEl = document.getElementById('waterNeedValue');
-    if (waterNeedEl) waterNeedEl.innerText = `${waterNeed.toFixed(1)} g/giorno`;
+    if (waterNeedEl) waterNeedEl.innerText = `${metrics.waterNeed.toFixed(1)} g/giorno`;
 
-    // Sex Ratio calculation
+    // ── Sex Ratio ─────────────────────────────────────────────────────────────
     if (fCount > 0) {
         const ratio = mCount / fCount;
         document.getElementById('sexRatioValue').innerText = `1 : ${(1/ratio).toFixed(1)}`;
         const statusEl = document.getElementById('sexRatioStatus');
         const cardEl = document.getElementById('sexRatioCard');
 
-        // Optimal ratio is often considered 1:3 to 1:5 (males to females) -> 0.2 to 0.33
         if (ratio >= 0.2 && ratio <= 0.35) {
             statusEl.innerText = "Ottimale per la riproduzione (1:3 - 1:5).";
             statusEl.style.color = "var(--accent-green)";
@@ -663,7 +720,7 @@ const updateUI = () => {
             cardEl.style.backgroundColor = "rgba(255, 71, 87, 0.1)";
         } else {
             statusEl.innerText = "Scarsità di maschi. Potrebbe ridurre la frequenza di accoppiamento.";
-            statusEl.style.color = "#F2C94C"; // Warning yellow
+            statusEl.style.color = "#F2C94C";
             cardEl.style.borderColor = "#F2C94C";
             cardEl.style.backgroundColor = "rgba(242, 201, 76, 0.1)";
         }
@@ -671,6 +728,7 @@ const updateUI = () => {
         document.getElementById('sexRatioValue').innerText = "--";
         document.getElementById('sexRatioStatus').innerText = "Dati insufficienti.";
     }
+
 
 
     // Harvest Simulator
@@ -812,43 +870,15 @@ const updateUI = () => {
         }
     }
 
-    // Maturation Timer
+    // ── Timer di Maturazione (Δg dinamico, θ₂-driven) ───────────────────────
     const maturationCard = document.getElementById('maturationTimerCard');
     const maturationText = document.getElementById('maturationTimerText');
     if (maturationCard && maturationText) {
         maturationCard.style.display = 'block';
-        // Base growth rates could be derived from theta2, but simplified for now based on average Dubia lifecycle
-        // Baby -> Small (30 days) -> Medium (30 days) -> Sub-Adult (40 days) -> Adult
-
-        let daysToNext = 30; // default
-        let baseMsg = "";
-
-        // Find the current peak
-        const pops = [
-            { name: "Micro-Neanidi", count: bCount, next: "Neanidi Piccole", days: 30 },
-            { name: "Neanidi Piccole", count: smCount, next: "Neanidi Medie", days: 30 },
-            { name: "Neanidi Medie", count: medCount, next: "Sub-Adulte", days: 40 },
-            { name: "Sub-Adulte", count: saCount, next: "Adulte", days: 30 }
-        ];
-
-        pops.sort((a, b) => b.count - a.count);
-        const peak = pops[0];
-
-        // Calcola i giorni in base a theta2 e temperatura/condizioni.
-        // Use an inverse relation to health index / theta2.
-        // Higher theta2 = faster growth.
-        // Let's create a "growth multiplier" based on theta2 (default 0.01)
-        const growthSpeed = Math.max(0.5, Math.min(2.0, appState.params.theta2 / 0.01));
-        const estimatedDays = Math.round(peak.days / growthSpeed);
-
-        if (peak.count > (totalCount * 0.2)) { // if peak is significant
-            maturationText.innerText = `Il picco attuale (${peak.name}) impiegherà circa ${estimatedDays} giorni per mutare in ${peak.next}.`;
-        } else {
-            maturationText.innerText = "Distribuzione stabile. Nessun picco imminente rilevato.";
-        }
+        maturationText.innerText = metrics.maturMessage;
     }
 
-    // Update Progress Bars based on relative population counts
+    // ── Barre di avanzamento piramide ────────────────────────────────────────
     document.getElementById('barFemale').style.width = `${(fCount/totalCount)*100 * 3}%`; // Multiplier for visual effect
     document.getElementById('barMale').style.width = `${(mCount/totalCount)*100 * 3}%`;
     document.getElementById('barSubAdult').style.width = `${(saCount/totalCount)*100 * 3}%`;
@@ -856,32 +886,23 @@ const updateUI = () => {
     document.getElementById('barSmall').style.width = `${(smCount/totalCount)*100 * 3}%`;
     document.getElementById('barBaby').style.width = `${(bCount/totalCount)*100 * 3}%`;
 
-    // Update Census Chart (Modulo 4 — 4 stadi D.U.B.I.A.)
+    // Update Census Chart (Modulo 4 — 4 stadi D.U.B.I.A., dati da metrics centralizzate)
     const ctxCensus = document.getElementById('censusChart');
     if (ctxCensus) {
         if (appState.charts.census) {
             appState.charts.census.destroy();
         }
 
-        // Usa i 4 stadi ufficiali del Modulo 4
-        const censusModuleRef = D();
-        let chartLabels, chartData, chartColors;
-        if (censusModuleRef && appState.measurements.length > 0) {
-            const lm = appState.measurements[appState.measurements.length - 1];
-            const cd = censusModuleRef.census(lm.total_weight, lm.adult_ratio || 0.35);
-            chartLabels = [
-                `Femmine (${cd.N_femmine})`,
-                `Maschi (${cd.N_maschi})`,
-                `Neanidi Medie (${cd.N_medie})`,
-                `Baby (${cd.N_baby})`
-            ];
-            chartData   = [cd.N_femmine, cd.N_maschi, cd.N_medie, cd.N_baby];
-            chartColors = ['#9b59b6', '#3498db', '#2ecc71', '#f1c40f'];
-        } else {
-            chartLabels = ['Femmine', 'Maschi', 'Neanidi Medie', 'Baby'];
-            chartData   = [fCount, mCount, medCount, bCount];
-            chartColors = ['#9b59b6', '#3498db', '#2ecc71', '#f1c40f'];
-        }
+        // I dati vengono da calculateColonyMetrics() già eseguita — nessun ricalcolo
+        const cd = metrics.census;
+        const chartLabels = [
+            `Femmine (${metrics.fCount})`,
+            `Maschi (${metrics.mCount})`,
+            `Neanidi Medie (${metrics.medCount})`,
+            `Baby (${metrics.bCount})`
+        ];
+        const chartData   = [metrics.fCount, metrics.mCount, metrics.medCount, metrics.bCount];
+        const chartColors = ['#9b59b6', '#3498db', '#2ecc71', '#f1c40f'];
 
         appState.charts.census = new Chart(ctxCensus.getContext('2d'), {
             type: 'doughnut',
@@ -991,19 +1012,20 @@ const updateUI = () => {
     // Aggiorna Tabella Censimento Demografico (Modulo 4)
     const latestForCensus = appState.measurements[appState.measurements.length - 1];
     if (latestForCensus) {
-        updateCensusTable(
-            latestForCensus.total_weight,
-            latestForCensus.adult_ratio || 0.35
-        );
+        // ── Tabella Censimento (usa metrics già calcolate — zero ricalcoli) ──────
+    updateCensusTable(
+        latestForCensus.total_weight,
+        latestForCensus.adult_ratio || 0.35,
+        metrics
+    );
+
     }
 
-    // Aggiorna il Pregnant Ratio basandosi sull'errore reale/predetto
+    // Aggiorna il Pregnant Ratio — usa metrics.census già calcolate (zero ricalcoli)
     if (appState.measurements.length > 1) {
-        const prev = appState.measurements[appState.measurements.length - 2];
         const curr = appState.measurements[appState.measurements.length - 1];
-        const census = D() ? D().census(curr.total_weight, curr.adult_ratio || 0.35) : null;
-        if (census) {
-            // Stima femmine gravide: delta peso rispetto predetto / (0.4g * N_femmine)
+        const census = metrics.census;
+        if (census && census.N_femmine > 0) {
             const deltaOverPred = curr.total_weight - (curr.predicted_weight || curr.total_weight);
             const maxExtra = census.N_femmine * 0.4;
             const pregnantPct = maxExtra > 0 ? Math.min(100, Math.max(0, (deltaOverPred / maxExtra) * 100)) : 0;
@@ -1108,6 +1130,24 @@ const updateCharts = () => {
     });
 
     // Health Chart
+    // healthData usa l'H ricalcolato come (θ₁/θ₁*)×100 per ogni snapshot.
+    // Per record storici che avevano H calcolato con la vecchia formula (reale/pred),
+    // usiamo l'H live corrente per l'ultimo punto e i valori storici per i precedenti.
+    const healthDataCorrected = appState.measurements.map((m, i) => {
+        // Se è l'ultimo record, usa l'H live calcolato dai parametri aggiornati
+        if (i === appState.measurements.length - 1) {
+            return computeHealthIndex(appState.params.theta1);
+        }
+        // Per record storici, l'H salvato potrebbe essere la vecchia formula;
+        // normalizziamo: se H > 200 o < 0 è chiaramente sbagliato, usa 100.
+        const h = m.health_index;
+        return (h >= 0 && h <= 200) ? h : 100;
+    });
+    healthDataCorrected.push(null); // punto futuro senza health
+
+    const hMin = Math.max(40, Math.min(...healthDataCorrected.filter(v => v !== null)) - 10);
+    const hMax = Math.min(130, Math.max(...healthDataCorrected.filter(v => v !== null)) + 10);
+
     const ctxHealth = document.getElementById('healthChart').getContext('2d');
     if (appState.charts.health) appState.charts.health.destroy();
 
@@ -1115,45 +1155,81 @@ const updateCharts = () => {
         type: 'line',
         data: {
             labels,
-            datasets: [{
-                label: 'Indice Salute H (%)',
-                data: healthData,
-                borderColor: '#3498db',
-                backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                borderWidth: 2,
-                tension: 0.3,
-                fill: true
-            }]
+            datasets: [
+                {
+                    label: 'Indice Salute H (%)',
+                    data: healthDataCorrected,
+                    borderColor: '#3498db',
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    fill: true,
+                    spanGaps: false
+                },
+                // Linea soglia Warning (90%)
+                {
+                    label: 'Soglia Warning (90%)',
+                    data: Array(labels.length).fill(90),
+                    borderColor: '#F2C94C',
+                    borderDash: [4, 4],
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    fill: false
+                },
+                // Linea soglia Critica (75%)
+                {
+                    label: 'Soglia Critica (75%)',
+                    data: Array(labels.length).fill(75),
+                    borderColor: '#C0292B',
+                    borderDash: [4, 4],
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    fill: false
+                }
+            ]
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,   // ← obbligatorio per mobile-first
             plugins: {
+                legend: {
+                    display: true,
+                    position: 'bottom',
+                    labels: {
+                        color: '#94A3B8',
+                        font: { size: 11 },
+                        filter: (item) => !item.text.includes('Soglia') || true
+                    }
+                },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return 'Indice Salute: ' + context.parsed.y.toFixed(1) + '%';
+                            if (context.parsed.y === null) return null;
+                            return `${context.dataset.label}: ${context.parsed.y.toFixed(1)}%`;
                         },
                         afterBody: function(tooltipItems) {
                             const dataIndex = tooltipItems[0].dataIndex;
                             if (notesData[dataIndex]) {
-                                return '\nNote: ' + notesData[dataIndex] + '\n(Clicca sul punto per i dettagli)';
+                                return '\nNote: ' + notesData[dataIndex];
                             }
                             return '';
                         }
                     }
-                },
-                annotation: { // Conceptual, requires chartjs-plugin-annotation for actual line drawing
-                    annotations: {
-                        line1: { type: 'line', yMin: 75, yMax: 75, borderColor: '#C0292B', borderWidth: 1, borderDash: [2,2] }
-                    }
                 }
             },
             scales: {
-                y: { min: 50, max: 120, grid: { color: 'rgba(255,255,255,0.05)' } }
+                y: {
+                    min: hMin,
+                    max: hMax,
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { callback: v => v + '%' }
+                },
+                x: { grid: { display: false } }
             }
         }
     });
 };
+
 
 // --- EVENT LISTENERS & DOM LOGIC ---
 
