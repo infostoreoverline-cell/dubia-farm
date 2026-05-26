@@ -737,3 +737,452 @@ button, input[type="text"], input[type="number"], input[type="date"], select, te
     .formula-box { grid-template-columns: 1fr; }
     .diag-rules  { font-size: 0.75rem; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   D.U.B.I.A. — Sezione Clienti & Prezzi
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Header: bottone Prezzi + layout header-right ──────────── */
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+}
+
+.btn-prezzi {
+    background: linear-gradient(135deg, rgba(142, 68, 173, 0.25), rgba(142, 68, 173, 0.1));
+    border: 1px solid rgba(142, 68, 173, 0.5);
+    color: var(--accent-purple);
+    padding: 0.45rem 1rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    font-family: 'Inter', sans-serif;
+}
+.btn-prezzi:hover {
+    background: linear-gradient(135deg, rgba(142, 68, 173, 0.4), rgba(142, 68, 173, 0.2));
+    border-color: var(--accent-purple);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(142, 68, 173, 0.3);
+}
+
+/* ── Stat Grid Clienti ────────────────────────────────────── */
+.clienti-stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+.clienti-stat-card {
+    margin-bottom: 0 !important;
+}
+.clienti-stat-card h3 {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+}
+.clienti-stat-card .value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--accent-green);
+    line-height: 1.1;
+}
+
+/* ── Card header con titolo + pulsante ─────────────────────── */
+.clienti-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+}
+.clienti-card-header h3 { margin: 0; }
+
+/* ── Search Bar ─────────────────────────────────────────────── */
+.clienti-search-wrapper {
+    position: relative;
+    margin-bottom: 1.25rem;
+}
+.search-icon {
+    position: absolute;
+    left: 0.9rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.9rem;
+    pointer-events: none;
+    opacity: 0.6;
+}
+.clienti-search-input {
+    width: 100%;
+    padding: 0.75rem 1rem 0.75rem 2.5rem;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-navy);
+    color: var(--text-main);
+    font-size: 0.95rem;
+    font-family: 'Inter', sans-serif;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.clienti-search-input:focus {
+    outline: none;
+    border-color: var(--accent-green);
+    box-shadow: 0 0 0 3px rgba(39, 174, 96, 0.12);
+}
+.clienti-search-input::placeholder { color: var(--text-muted); }
+
+/* ── Stato vuoto ────────────────────────────────────────────── */
+.clienti-empty {
+    text-align: center;
+    padding: 2.5rem 1rem;
+    color: var(--text-muted);
+}
+.clienti-empty-icon {
+    font-size: 2.5rem;
+    display: block;
+    margin-bottom: 0.75rem;
+    opacity: 0.5;
+}
+.clienti-empty strong { color: var(--accent-green); }
+
+/* ── Client Card ────────────────────────────────────────────── */
+.client-card {
+    background: linear-gradient(135deg, rgba(35, 57, 93, 0.9), rgba(24, 43, 73, 0.95));
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 0.85rem;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+.client-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent-green), var(--accent-purple));
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+.client-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    border-color: rgba(39, 174, 96, 0.25);
+}
+.client-card:hover::before { opacity: 1; }
+
+/* Header della card */
+.client-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    margin-bottom: 0.75rem;
+}
+
+/* Avatar con iniziali */
+.client-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-green), var(--accent-purple));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    font-weight: 800;
+    color: white;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    box-shadow: 0 2px 8px rgba(39, 174, 96, 0.3);
+}
+
+.client-info { flex: 1; min-width: 0; }
+.client-name {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.client-location {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 0.1rem;
+}
+
+/* Badge tipo animale */
+.animal-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.65rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Contatti chip */
+.client-contacts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.6rem;
+}
+.client-contact-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.78rem;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: background 0.15s, color 0.15s;
+}
+.client-contact-chip:hover {
+    background: rgba(39, 174, 96, 0.12);
+    color: var(--accent-green);
+    border-color: rgba(39, 174, 96, 0.3);
+}
+
+/* Nota cliente */
+.client-note {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-style: italic;
+    background: rgba(0,0,0,0.15);
+    border-radius: 6px;
+    padding: 0.4rem 0.65rem;
+    margin-bottom: 0.75rem;
+    border-left: 2px solid var(--border-color);
+}
+
+/* Footer della card */
+.client-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(255,255,255,0.06);
+}
+.client-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+.client-stat {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+.client-stat strong { color: var(--text-main); }
+.client-stat-date {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+/* Bottoni azione card */
+.client-actions {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+.btn-client-cessione {
+    background: linear-gradient(135deg, var(--accent-green), #219653);
+    color: white;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.78rem;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    font-family: 'Inter', sans-serif;
+    transition: all 0.15s ease;
+}
+.btn-client-cessione:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(39, 174, 96, 0.35);
+}
+.btn-client-edit {
+    background: rgba(255,255,255,0.07);
+    color: var(--text-muted);
+    padding: 0.35rem 0.6rem;
+    font-size: 0.85rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    transition: all 0.15s ease;
+}
+.btn-client-edit:hover {
+    background: rgba(255,255,255,0.12);
+    color: var(--text-main);
+}
+.btn-client-delete {
+    background: rgba(192, 41, 43, 0.1);
+    color: var(--alert-red);
+    padding: 0.35rem 0.6rem;
+    font-size: 0.85rem;
+    border-radius: 8px;
+    border: 1px solid rgba(192, 41, 43, 0.3);
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    transition: all 0.15s ease;
+}
+.btn-client-delete:hover {
+    background: rgba(192, 41, 43, 0.2);
+    border-color: var(--alert-red);
+}
+
+/* ── Tabella cessioni: cella vuota ──────────────────────────── */
+.table-empty {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 2rem !important;
+    font-style: italic;
+}
+
+/* ── Modal allargato per clienti/cessioni ───────────────────── */
+.modal-clienti {
+    max-width: 520px;
+    max-height: 92vh;
+    overflow-y: auto;
+}
+.modal-clienti h2 { color: var(--accent-green); }
+
+/* ── Preview totale cessione ─────────────────────────────────── */
+.cessione-totale-preview {
+    background: linear-gradient(135deg, rgba(39, 174, 96, 0.12), rgba(39, 174, 96, 0.05));
+    border: 1px solid rgba(39, 174, 96, 0.3);
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--accent-green);
+    margin-bottom: 1rem;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+/* ── Modal Prezzi ───────────────────────────────────────────── */
+.modal-prezzi {
+    max-width: 460px;
+}
+.modal-prezzi h2 { color: #f39c12; }
+
+.price-rows-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-bottom: 1.25rem;
+}
+.price-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.65rem 0.85rem;
+    background: rgba(0,0,0,0.15);
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    transition: background 0.15s;
+}
+.price-row:hover { background: rgba(255,255,255,0.04); }
+.price-row-label {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-main);
+    flex: 1;
+}
+.price-row-label small {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-left: 0.25rem;
+}
+.price-row-input {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+.price-currency {
+    font-size: 0.85rem;
+    color: #f39c12;
+    font-weight: 700;
+}
+.price-unit {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+.price-row-input .input-standard {
+    width: 75px;
+    padding: 0.4rem 0.5rem;
+    text-align: right;
+    font-size: 0.9rem;
+    border-radius: 7px;
+}
+.price-row-input .input-standard:focus {
+    border-color: #f39c12;
+    box-shadow: 0 0 0 3px rgba(243, 156, 18, 0.15);
+}
+
+/* Anteprima valore colonia nel modale prezzi */
+.price-preview-box {
+    background: linear-gradient(135deg, rgba(243, 156, 18, 0.1), rgba(243, 156, 18, 0.05));
+    border: 1px solid rgba(243, 156, 18, 0.35);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #f39c12;
+    text-align: center;
+    margin-bottom: 1.25rem;
+}
+
+/* ── Responsive Clienti ─────────────────────────────────────── */
+@media screen and (max-width: 768px) {
+    .clienti-stats-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    .header-right {
+        flex-direction: row;
+        gap: 0.75rem;
+    }
+    .btn-prezzi {
+        font-size: 0.78rem;
+        padding: 0.4rem 0.75rem;
+    }
+    .client-card-footer {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .client-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+    .modal-clienti, .modal-prezzi {
+        max-width: 95%;
+    }
+}
+@media screen and (max-width: 480px) {
+    .clienti-stats-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+    }
+    .clienti-stat-card .value { font-size: 1.3rem; }
+}
+

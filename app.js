@@ -38,17 +38,30 @@ const MASS = {
     BABY: 0.1
 };
 
+// Prezzi di default per tipologia (modificabili dall'utente)
+const DEFAULT_PRICES = {
+    FEMALE: 0.50,
+    MALE: 0.40,
+    SUBADULT: 0.30,
+    MEDIUM: 0.20,
+    SMALL: 0.10,
+    BABY: 0.05
+};
+
 // State
 let appState = {
     measurements: [],
     params: { ...DEFAULT_PARAMS },
-    charts: {}
+    charts: {},
+    clients: [],
+    cessioni: [],
+    customPrices: { ...DEFAULT_PRICES }
 };
 
 // --- DATABASE (IndexedDB) ---
 const dbName = "DubiaDB";
 // Versione 2: aggiunto schema migration per garantire integrità su mobile
-const dbVersion = 2;
+const dbVersion = 3;
 let db;
 
 const initDB = () => {
@@ -67,10 +80,21 @@ const initDB = () => {
             if (!db.objectStoreNames.contains("parameters")) {
                 db.createObjectStore("parameters", { keyPath: "id" });
             }
+            // Crea store clienti se non esiste (v3+)
+            if (!db.objectStoreNames.contains("clients")) {
+                db.createObjectStore("clients", { keyPath: "id", autoIncrement: true });
+            }
+            // Crea store cessioni se non esiste (v3+)
+            if (!db.objectStoreNames.contains("cessioni")) {
+                db.createObjectStore("cessioni", { keyPath: "id", autoIncrement: true });
+            }
             // Migration v1→v2: invalida i parametri salvati in modo che vengano
             // rivalidati al prossimo caricamento (reset a DEFAULT_PARAMS se fuori range)
             if (oldVersion === 1) {
                 console.info('[D.U.B.I.A.] Migration v1→v2: params will be revalidated on next load.');
+            }
+            if (oldVersion < 3) {
+                console.info('[D.U.B.I.A.] Migration v3: aggiunto store clients e cessioni.');
             }
         };
 
@@ -186,6 +210,21 @@ const loadInitialData = async () => {
 
     console.info(`[D.U.B.I.A.] Params caricati: θ₁=${appState.params.theta1.toFixed(4)}, θ₂=${appState.params.theta2.toFixed(4)}`);
 
+    // ── Carica prezzi personalizzati da IndexedDB ─────────────────────────
+    const storedPrices = await new Promise((resolve) => {
+        const tx = db.transaction("parameters", "readonly");
+        const store = tx.objectStore("parameters");
+        const req = store.get(2); // id=2 riservato ai prezzi
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror  = () => resolve(null);
+    });
+    if (storedPrices && storedPrices.prices) {
+        appState.customPrices = { ...DEFAULT_PRICES, ...storedPrices.prices };
+    }
+
+    // ── Carica Clienti e Cessioni da IndexedDB ────────────────────────────
+    await loadClientsAndCessioni();
+
     // ── STEP 2: Prova a caricare le misure dal Cloud ─────────────────────────
     try {
         showNotification("Sincronizzazione", "Download dati dal cloud...", "success");
@@ -278,6 +317,384 @@ const saveParams = (params) => {
     const tx = db.transaction("parameters", "readwrite");
     const store = tx.objectStore("parameters");
     store.put({ id: 1, ...params });
+};
+
+// ═══════════════════════════════════════════════════
+// CLIENTI & CESSIONI — CRUD
+// ═══════════════════════════════════════════════════
+
+/**
+ * Carica tutti i clienti e le cessioni da IndexedDB.
+ */
+const loadClientsAndCessioni = () => {
+    return new Promise((resolve) => {
+        const tx = db.transaction(["clients", "cessioni"], "readonly");
+        const clientsStore = tx.objectStore("clients");
+        const cessioniStore = tx.objectStore("cessioni");
+
+        const clientsReq = clientsStore.getAll();
+        const cessioniReq = cessioniStore.getAll();
+
+        let clientsDone = false;
+        let cessioniDone = false;
+
+        clientsReq.onsuccess = () => {
+            appState.clients = clientsReq.result || [];
+            clientsDone = true;
+            if (clientsDone && cessioniDone) resolve();
+        };
+        cessioniReq.onsuccess = () => {
+            appState.cessioni = (cessioniReq.result || []).sort((a, b) => new Date(b.data) - new Date(a.data));
+            cessioniDone = true;
+            if (clientsDone && cessioniDone) resolve();
+        };
+        clientsReq.onerror = () => { clientsDone = true; if (clientsDone && cessioniDone) resolve(); };
+        cessioniReq.onerror = () => { cessioniDone = true; if (clientsDone && cessioniDone) resolve(); };
+    });
+};
+
+/**
+ * Salva un nuovo cliente o aggiorna uno esistente in IndexedDB.
+ * Se client.id è undefined, viene creato (autoIncrement).
+ */
+const saveClient = (client) => {
+    return new Promise((resolve) => {
+        const tx = db.transaction("clients", "readwrite");
+        const store = tx.objectStore("clients");
+        const req = store.put(client);
+        req.onsuccess = (e) => {
+            if (!client.id) client.id = e.target.result;
+            // Aggiorna array in memoria
+            const idx = appState.clients.findIndex(c => c.id === client.id);
+            if (idx >= 0) appState.clients[idx] = client;
+            else appState.clients.push(client);
+            resolve(client);
+        };
+        req.onerror = () => resolve(null);
+    });
+};
+
+/**
+ * Elimina un cliente e tutte le sue cessioni.
+ */
+const deleteClient = (id) => {
+    return new Promise((resolve) => {
+        const tx = db.transaction(["clients", "cessioni"], "readwrite");
+        const clientsStore = tx.objectStore("clients");
+        const cessioniStore = tx.objectStore("cessioni");
+
+        clientsStore.delete(Number(id));
+        appState.clients = appState.clients.filter(c => c.id !== Number(id));
+
+        // Rimuovi anche le cessioni associate
+        const cessioniReq = cessioniStore.getAll();
+        cessioniReq.onsuccess = () => {
+            const toDelete = (cessioniReq.result || []).filter(c => c.cliente_id === Number(id));
+            toDelete.forEach(c => cessioniStore.delete(c.id));
+            appState.cessioni = appState.cessioni.filter(c => c.cliente_id !== Number(id));
+            resolve();
+        };
+    });
+};
+
+/**
+ * Salva una nuova cessione in IndexedDB.
+ */
+const saveCessione = (cessione) => {
+    return new Promise((resolve) => {
+        const tx = db.transaction("cessioni", "readwrite");
+        const store = tx.objectStore("cessioni");
+        const req = store.add(cessione);
+        req.onsuccess = (e) => {
+            cessione.id = e.target.result;
+            appState.cessioni.unshift(cessione); // più recente in cima
+            resolve(cessione);
+        };
+        req.onerror = () => resolve(null);
+    });
+};
+
+/**
+ * Elimina una cessione per id.
+ */
+const deleteCessione = (id) => {
+    return new Promise((resolve) => {
+        const tx = db.transaction("cessioni", "readwrite");
+        const store = tx.objectStore("cessioni");
+        store.delete(Number(id));
+        appState.cessioni = appState.cessioni.filter(c => c.id !== Number(id));
+        resolve();
+    });
+};
+
+/**
+ * Salva i prezzi personalizzati in IndexedDB (store parameters, id=2).
+ */
+const savePrices = (prices) => {
+    appState.customPrices = { ...prices };
+    const tx = db.transaction("parameters", "readwrite");
+    const store = tx.objectStore("parameters");
+    store.put({ id: 2, prices });
+};
+
+// ═══════════════════════════════════════════════════
+// UI CLIENTI
+// ═══════════════════════════════════════════════════
+
+/**
+ * Etichette e colori per tipo animale allevato.
+ */
+const ANIMAL_BADGES = {
+    rettile:   { label: '🦎 Rettile',   color: '#27AE60' },
+    anfibio:   { label: '🐸 Anfibio',   color: '#3498db' },
+    uccello:   { label: '🦜 Uccello',   color: '#F2C94C' },
+    mammifero: { label: '🐾 Mammifero', color: '#e67e22' },
+    pesce:     { label: '🐟 Pesce',     color: '#1abc9c' },
+    altro:     { label: '🐾 Altro',     color: '#95a5a6' }
+};
+
+/**
+ * Etichette per tipo blatta nel form cessioni.
+ */
+const BLATTA_TYPES = [
+    { value: 'FEMALE',   label: '🔴 Femmine Adulte (2.5g)',    mass: 2.5 },
+    { value: 'MALE',     label: '🔵 Maschi Adulti (1.5g)',     mass: 1.5 },
+    { value: 'SUBADULT', label: '🟡 Sub-Adulte (1.6g)',        mass: 1.6 },
+    { value: 'MEDIUM',   label: '🟢 Neanidi Medie (0.8g)',     mass: 0.8 },
+    { value: 'SMALL',    label: '⚪ Neanidi Piccole (0.3g)',   mass: 0.3 },
+    { value: 'BABY',     label: '🟡 Micro-Neanidi (0.1g)',     mass: 0.1 }
+];
+
+/**
+ * Aggiorna tutta la UI della sezione Clienti.
+ * Chiamata dopo ogni modifica a clients/cessioni.
+ */
+const updateClientiUI = (filterClientId = null) => {
+    const clients = appState.clients;
+    const cessioni = appState.cessioni;
+
+    // ── Stat Cards ───────────────────────────────────────────────────────────
+    const totalGrammi = cessioni.reduce((sum, c) => sum + (parseFloat(c.quantita_g) || 0), 0);
+    const totalEuro = cessioni.reduce((sum, c) => sum + (parseFloat(c.totale_euro) || 0), 0);
+
+    const elClientiTot = document.getElementById('clientiTotali');
+    const elCessioniTot = document.getElementById('cessioniTotali');
+    const elGrammiTot = document.getElementById('grammiCeduti');
+    const elEuroTot = document.getElementById('euroTotale');
+
+    if (elClientiTot) elClientiTot.textContent = clients.length;
+    if (elCessioniTot) elCessioniTot.textContent = cessioni.length;
+    if (elGrammiTot) elGrammiTot.textContent = totalGrammi.toLocaleString('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' g';
+    if (elEuroTot) elEuroTot.textContent = '€ ' + totalEuro.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // ── Lista Clienti ────────────────────────────────────────────────────────
+    const listEl = document.getElementById('clientiList');
+    if (!listEl) return;
+
+    const searchVal = (document.getElementById('clientiSearch')?.value || '').toLowerCase();
+    const filtered = clients.filter(c =>
+        !searchVal ||
+        (c.nome + ' ' + c.cognome).toLowerCase().includes(searchVal) ||
+        (c.citta || '').toLowerCase().includes(searchVal) ||
+        (c.animale || '').toLowerCase().includes(searchVal)
+    );
+
+    if (filtered.length === 0) {
+        listEl.innerHTML = `
+            <div class="clienti-empty">
+                <span class="clienti-empty-icon">👥</span>
+                <p>Nessun cliente trovato.</p>
+                <p class="subtitle-text">Clicca su <strong>+ Nuovo Cliente</strong> per aggiungerne uno.</p>
+            </div>`;
+    } else {
+        listEl.innerHTML = filtered.map(c => {
+            const badge = ANIMAL_BADGES[c.animale] || ANIMAL_BADGES.altro;
+            const cessioniCliente = cessioni.filter(ce => ce.cliente_id === c.id);
+            const grammiCliente = cessioniCliente.reduce((s, ce) => s + (parseFloat(ce.quantita_g) || 0), 0);
+            const ultimaCessione = cessioniCliente[0];
+            return `
+            <div class="client-card" data-id="${c.id}">
+                <div class="client-card-header">
+                    <div class="client-avatar">${(c.nome || '?')[0]}${(c.cognome || '')[0] || ''}</div>
+                    <div class="client-info">
+                        <div class="client-name">${c.nome} ${c.cognome}</div>
+                        ${c.citta ? `<div class="client-location">📍 ${c.citta}</div>` : ''}
+                    </div>
+                    <span class="animal-badge" style="background: ${badge.color}22; color: ${badge.color}; border-color: ${badge.color}44;">${badge.label}</span>
+                </div>
+                <div class="client-contacts">
+                    ${c.telefono ? `<a href="tel:${c.telefono}" class="client-contact-chip">📞 ${c.telefono}</a>` : ''}
+                    ${c.email ? `<a href="mailto:${c.email}" class="client-contact-chip">✉️ ${c.email}</a>` : ''}
+                </div>
+                ${c.note ? `<div class="client-note">"${c.note}"</div>` : ''}
+                <div class="client-card-footer">
+                    <div class="client-stats">
+                        <span class="client-stat"><strong>${cessioniCliente.length}</strong> cessioni · <strong>${grammiCliente.toFixed(0)} g</strong> ceduti</span>
+                        ${ultimaCessione ? `<span class="client-stat-date">Ultima: ${ultimaCessione.data}</span>` : ''}
+                    </div>
+                    <div class="client-actions">
+                        <button class="btn-standard btn-client-cessione" data-id="${c.id}" title="Registra cessione">📦 Cessione</button>
+                        <button class="btn-standard btn-client-edit" data-id="${c.id}" title="Modifica cliente">✏️</button>
+                        <button class="btn-standard btn-client-delete" data-id="${c.id}" title="Elimina cliente">🗑️</button>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    // ── Tabella Storico Cessioni ──────────────────────────────────────────────
+    const tbody = document.querySelector('#cessioniTable tbody');
+    if (!tbody) return;
+
+    const cessioniToShow = filterClientId
+        ? cessioni.filter(c => c.cliente_id === Number(filterClientId))
+        : cessioni;
+
+    // Aggiorna filtro dropdown
+    const filterSelect = document.getElementById('cessioniFilterCliente');
+    if (filterSelect) {
+        const currentVal = filterSelect.value;
+        filterSelect.innerHTML = '<option value="">Tutti i clienti</option>' +
+            clients.map(c => `<option value="${c.id}" ${c.id == currentVal ? 'selected' : ''}>${c.nome} ${c.cognome}</option>`).join('');
+    }
+
+    if (cessioniToShow.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="table-empty">Nessuna cessione registrata.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = cessioniToShow.map(c => {
+        const cliente = clients.find(cl => cl.id === c.cliente_id);
+        const nomeCliente = cliente ? `${cliente.nome} ${cliente.cognome}` : '—';
+        const blattaType = BLATTA_TYPES.find(b => b.value === c.tipo_blatta);
+        const blattaLabel = blattaType ? blattaType.label : c.tipo_blatta || '—';
+        const nIndividui = blattaType && c.quantita_g ? Math.round(c.quantita_g / blattaType.mass) : '—';
+        return `
+        <tr>
+            <td>${c.data}</td>
+            <td><strong>${nomeCliente}</strong></td>
+            <td>${blattaLabel}</td>
+            <td>${parseFloat(c.quantita_g || 0).toFixed(1)} g
+                ${nIndividui !== '—' ? `<br><small style="color:var(--text-muted)">≈ ${nIndividui} ind.</small>` : ''}
+            </td>
+            <td style="color: var(--accent-green);">€ ${parseFloat(c.totale_euro || 0).toFixed(2)}</td>
+            <td style="max-width:150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${c.note || ''}">${c.note || '—'}</td>
+            <td>
+                <button class="btn-standard btn-danger btn-delete-cessione" data-id="${c.id}" style="padding:0.2rem 0.5rem;font-size:0.8rem;">🗑️</button>
+            </td>
+        </tr>`;
+    }).join('');
+};
+
+/**
+ * Apre il modale cliente (in modalità aggiunta o modifica).
+ * @param {object|null} client - null per nuova aggiunta, oggetto cliente per modifica
+ */
+const openClientModal = (client = null) => {
+    const modal = document.getElementById('clientModal');
+    if (!modal) return;
+    const form = document.getElementById('clientForm');
+    form.reset();
+    document.getElementById('clientModalTitle').textContent = client ? 'Modifica Cliente' : 'Nuovo Cliente';
+    document.getElementById('clientId').value = client?.id || '';
+    if (client) {
+        document.getElementById('clientNome').value = client.nome || '';
+        document.getElementById('clientCognome').value = client.cognome || '';
+        document.getElementById('clientCitta').value = client.citta || '';
+        document.getElementById('clientTelefono').value = client.telefono || '';
+        document.getElementById('clientEmail').value = client.email || '';
+        document.getElementById('clientAnimale').value = client.animale || 'rettile';
+        document.getElementById('clientNote').value = client.note || '';
+    }
+    modal.classList.add('active');
+};
+
+/**
+ * Apre il modale cessione, pre-selezionando un cliente se fornito.
+ */
+const openCessioneModal = (clienteId = null) => {
+    const modal = document.getElementById('cessioneModal');
+    if (!modal) return;
+    const form = document.getElementById('cessioneForm');
+    form.reset();
+
+    // Popola il select clienti
+    const selectCliente = document.getElementById('cessioneCliente');
+    selectCliente.innerHTML = '<option value="">— Seleziona cliente —</option>' +
+        appState.clients.map(c =>
+            `<option value="${c.id}" ${c.id == clienteId ? 'selected' : ''}>${c.nome} ${c.cognome}</option>`
+        ).join('');
+
+    // Data di oggi
+    document.getElementById('cessioneData').valueAsDate = new Date();
+
+    // Popola select tipo blatta
+    const selectTipo = document.getElementById('cessioneTipo');
+    selectTipo.innerHTML = BLATTA_TYPES.map(b =>
+        `<option value="${b.value}">${b.label}</option>`
+    ).join('');
+
+    // Aggiorna prezzo unitario default al cambio tipo
+    const updatePrezzoUnitario = () => {
+        const tipo = selectTipo.value;
+        const prezzo = appState.customPrices[tipo] || DEFAULT_PRICES[tipo] || 0;
+        document.getElementById('cessionePrezzoUnit').value = prezzo.toFixed(2);
+        updateCessioneTotale();
+    };
+    const updateCessioneTotale = () => {
+        const q = parseFloat(document.getElementById('cessioneQuantita').value) || 0;
+        const p = parseFloat(document.getElementById('cessionePrezzoUnit').value) || 0;
+        const tipo = selectTipo.value;
+        const blattaType = BLATTA_TYPES.find(b => b.value === tipo);
+        const nInd = blattaType ? Math.round(q / blattaType.mass) : 0;
+        const totale = q * p;
+        document.getElementById('cessioneTotalePreview').textContent =
+            `Totale: € ${totale.toFixed(2)} · ≈ ${nInd} individui`;
+        document.getElementById('cessioneTotale').value = totale.toFixed(2);
+    };
+
+    selectTipo.onchange = updatePrezzoUnitario;
+    document.getElementById('cessioneQuantita').oninput = updateCessioneTotale;
+    document.getElementById('cessionePrezzoUnit').oninput = updateCessioneTotale;
+    updatePrezzoUnitario();
+
+    modal.classList.add('active');
+};
+
+/**
+ * Apre il modale prezzi e popola i campi con i prezzi correnti.
+ */
+const openPrezziModal = () => {
+    const modal = document.getElementById('prezziModal');
+    if (!modal) return;
+    BLATTA_TYPES.forEach(b => {
+        const input = document.getElementById(`price_${b.value}`);
+        if (input) input.value = (appState.customPrices[b.value] || DEFAULT_PRICES[b.value] || 0).toFixed(2);
+    });
+    updatePrezziPreview();
+    modal.classList.add('active');
+};
+
+/**
+ * Aggiorna il riquadro anteprima valore colonia nel modale prezzi.
+ */
+const updatePrezziPreview = () => {
+    if (appState.measurements.length === 0) return;
+    const latest = appState.measurements[appState.measurements.length - 1];
+    const lastAdultRatio = latest.adult_ratio || 0.35;
+    const tempPrices = {};
+    BLATTA_TYPES.forEach(b => {
+        const input = document.getElementById(`price_${b.value}`);
+        tempPrices[b.value] = parseFloat(input?.value) || 0;
+    });
+    const metrics = calculateColonyMetrics(latest.total_weight, lastAdultRatio, { ...appState.params, _tempPrices: tempPrices });
+    // Calcola con i prezzi temporanei
+    const { fCount, mCount, saCount, medCount, smCount, bCount } = metrics;
+    const val = (fCount * tempPrices.FEMALE) + (mCount * tempPrices.MALE)
+        + (saCount * tempPrices.SUBADULT) + (medCount * tempPrices.MEDIUM)
+        + (smCount * tempPrices.SMALL) + (bCount * tempPrices.BABY);
+    const previewEl = document.getElementById('prezziValoreColoniaPreview');
+    if (previewEl) previewEl.textContent = `Valore Colonia stimato: € ${val.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 const saveMeasurement = async (measurement) => {
@@ -555,8 +972,8 @@ const calculateColonyMetrics = (W_t, A_t, params) => {
     const bCount   = calibs['BABY']     !== undefined ? calibs['BABY']     : censusData.N_baby;
     const totalCount = fCount + mCount + saCount + medCount + smCount + bCount;
 
-    // ── Valore economico ────────────────────────────────────────────────────
-    const prices = { FEMALE: 0.50, MALE: 0.40, SUBADULT: 0.30, MEDIUM: 0.20, SMALL: 0.10, BABY: 0.05 };
+    // ── Valore economico (usa prezzi personalizzati da appState) ───────────
+    const prices = appState.customPrices || DEFAULT_PRICES;
     const economicValue = (fCount * prices.FEMALE) + (mCount * prices.MALE)
         + (saCount * prices.SUBADULT) + (medCount * prices.MEDIUM)
         + (smCount * prices.SMALL)   + (bCount   * prices.BABY);
@@ -1801,6 +2218,207 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 showNotification("Successo", `Prelievo di ${amount}g registrato.`, "success");
             });
+        });
+    }
+
+    // ══════════════════════════════════════════════════════
+    // EVENT LISTENERS — SEZIONE CLIENTI
+    // ══════════════════════════════════════════════════════
+
+    // Aggiorna UI clienti al caricamento (dopo loadInitialData)
+    updateClientiUI();
+
+    // ── Nuovo Cliente ─────────────────────────────────────────
+    const btnNuovoCliente = document.getElementById('btnNuovoCliente');
+    if (btnNuovoCliente) {
+        btnNuovoCliente.addEventListener('click', () => openClientModal(null));
+    }
+    const btnCancelClient = document.getElementById('btnCancelClient');
+    if (btnCancelClient) {
+        btnCancelClient.addEventListener('click', () => document.getElementById('clientModal').classList.remove('active'));
+    }
+
+    const clientForm = document.getElementById('clientForm');
+    if (clientForm) {
+        clientForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const idVal = document.getElementById('clientId').value;
+            const client = {
+                nome:     document.getElementById('clientNome').value.trim(),
+                cognome:  document.getElementById('clientCognome').value.trim(),
+                citta:    document.getElementById('clientCitta').value.trim(),
+                telefono: document.getElementById('clientTelefono').value.trim(),
+                email:    document.getElementById('clientEmail').value.trim(),
+                animale:  document.getElementById('clientAnimale').value,
+                note:     document.getElementById('clientNote').value.trim(),
+                data_aggiunta: new Date().toISOString().split('T')[0]
+            };
+            if (idVal) client.id = Number(idVal);
+
+            await saveClient(client);
+            document.getElementById('clientModal').classList.remove('active');
+            updateClientiUI();
+            showNotification('Cliente Salvato', `${client.nome} ${client.cognome} aggiunto al database.`, 'success');
+        });
+    }
+
+    // ── Delegazione click su lista clienti ───────────────────
+    document.addEventListener('click', async (e) => {
+        // Bottone Modifica cliente
+        const editBtn = e.target.closest('.btn-client-edit');
+        if (editBtn) {
+            const id = Number(editBtn.dataset.id);
+            const client = appState.clients.find(c => c.id === id);
+            if (client) openClientModal(client);
+            return;
+        }
+
+        // Bottone Elimina cliente
+        const deleteClientBtn = e.target.closest('.btn-client-delete');
+        if (deleteClientBtn) {
+            const id = Number(deleteClientBtn.dataset.id);
+            const client = appState.clients.find(c => c.id === id);
+            const name = client ? `${client.nome} ${client.cognome}` : 'questo cliente';
+
+            const confirmModal = document.createElement('div');
+            confirmModal.className = 'modal-overlay active';
+            confirmModal.innerHTML = `
+                <div class="modal">
+                    <h2 style="color: var(--alert-red);">Elimina Cliente</h2>
+                    <p>Eliminare <strong>${name}</strong> e tutto il suo storico cessioni?</p>
+                    <div class="modal-actions">
+                        <button class="btn-standard btn-cancel" id="btnCancelDelClient">Annulla</button>
+                        <button class="btn-standard btn-danger" id="btnConfirmDelClient">Sì, Elimina</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(confirmModal);
+            document.getElementById('btnCancelDelClient').addEventListener('click', () => document.body.removeChild(confirmModal));
+            document.getElementById('btnConfirmDelClient').addEventListener('click', async () => {
+                document.body.removeChild(confirmModal);
+                await deleteClient(id);
+                updateClientiUI();
+                showNotification('Cliente Eliminato', `${name} rimosso dal database.`, 'success');
+            });
+            return;
+        }
+
+        // Bottone Nuova Cessione dalla card cliente
+        const cessioneBtn = e.target.closest('.btn-client-cessione');
+        if (cessioneBtn) {
+            openCessioneModal(Number(cessioneBtn.dataset.id));
+            return;
+        }
+
+        // Bottone Elimina cessione
+        const deleteCessioneBtn = e.target.closest('.btn-delete-cessione');
+        if (deleteCessioneBtn) {
+            const id = Number(deleteCessioneBtn.dataset.id);
+            const confirmModal = document.createElement('div');
+            confirmModal.className = 'modal-overlay active';
+            confirmModal.innerHTML = `
+                <div class="modal">
+                    <h2 style="color: var(--alert-red);">Elimina Cessione</h2>
+                    <p>Rimuovere questa cessione dallo storico?</p>
+                    <div class="modal-actions">
+                        <button class="btn-standard btn-cancel" id="btnCancelDelCessione">Annulla</button>
+                        <button class="btn-standard btn-danger" id="btnConfirmDelCessione">Sì, Elimina</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(confirmModal);
+            document.getElementById('btnCancelDelCessione').addEventListener('click', () => document.body.removeChild(confirmModal));
+            document.getElementById('btnConfirmDelCessione').addEventListener('click', async () => {
+                document.body.removeChild(confirmModal);
+                await deleteCessione(id);
+                updateClientiUI();
+                showNotification('Cessione Eliminata', 'Registro rimosso dallo storico.', 'success');
+            });
+            return;
+        }
+    });
+
+    // ── Nuova Cessione (bottone nella tabella) ────────────────
+    const btnNuovaCessione = document.getElementById('btnNuovaCessione');
+    if (btnNuovaCessione) {
+        btnNuovaCessione.addEventListener('click', () => openCessioneModal(null));
+    }
+    const btnCancelCessione = document.getElementById('btnCancelCessione');
+    if (btnCancelCessione) {
+        btnCancelCessione.addEventListener('click', () => document.getElementById('cessioneModal').classList.remove('active'));
+    }
+
+    const cessioneForm = document.getElementById('cessioneForm');
+    if (cessioneForm) {
+        cessioneForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const clienteId = Number(document.getElementById('cessioneCliente').value);
+            if (!clienteId) {
+                showNotification('Errore', 'Seleziona un cliente prima di registrare la cessione.', 'alert');
+                return;
+            }
+            const cessione = {
+                cliente_id:     clienteId,
+                data:           document.getElementById('cessioneData').value,
+                tipo_blatta:    document.getElementById('cessioneTipo').value,
+                quantita_g:     parseFloat(document.getElementById('cessioneQuantita').value) || 0,
+                prezzo_unit:    parseFloat(document.getElementById('cessionePrezzoUnit').value) || 0,
+                totale_euro:    parseFloat(document.getElementById('cessioneTotale').value) || 0,
+                note:           document.getElementById('cessioneNote').value.trim()
+            };
+            await saveCessione(cessione);
+            document.getElementById('cessioneModal').classList.remove('active');
+            updateClientiUI();
+            const cliente = appState.clients.find(c => c.id === clienteId);
+            const nomeCl = cliente ? `${cliente.nome} ${cliente.cognome}` : 'cliente';
+            showNotification('Cessione Registrata', `${cessione.quantita_g} g ceduti a ${nomeCl} — € ${cessione.totale_euro.toFixed(2)}`, 'success');
+        });
+    }
+
+    // ── Filtro storico cessioni per cliente ───────────────────
+    const cessioniFilterCliente = document.getElementById('cessioniFilterCliente');
+    if (cessioniFilterCliente) {
+        cessioniFilterCliente.addEventListener('change', (e) => {
+            updateClientiUI(e.target.value || null);
+        });
+    }
+
+    // ── Search bar clienti (debounced) ─────────────────────────
+    const clientiSearch = document.getElementById('clientiSearch');
+    if (clientiSearch) {
+        let searchTimeout;
+        clientiSearch.addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => updateClientiUI(), 250);
+        });
+    }
+
+    // ── Bottone Prezzi ─────────────────────────────────────────
+    const btnOpenPrezzi = document.getElementById('btnOpenPrezzi');
+    if (btnOpenPrezzi) {
+        btnOpenPrezzi.addEventListener('click', openPrezziModal);
+    }
+    const btnCancelPrezzi = document.getElementById('btnCancelPrezzi');
+    if (btnCancelPrezzi) {
+        btnCancelPrezzi.addEventListener('click', () => document.getElementById('prezziModal').classList.remove('active'));
+    }
+
+    const prezziForm = document.getElementById('prezziForm');
+    if (prezziForm) {
+        // Aggiorna preview live ad ogni modifica di un prezzo
+        prezziForm.querySelectorAll('input[type="number"]').forEach(input => {
+            input.addEventListener('input', updatePrezziPreview);
+        });
+
+        prezziForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const newPrices = {};
+            ['FEMALE','MALE','SUBADULT','MEDIUM','SMALL','BABY'].forEach(key => {
+                const input = document.getElementById(`price_${key}`);
+                newPrices[key] = parseFloat(input?.value) || 0;
+            });
+            savePrices(newPrices);
+            document.getElementById('prezziModal').classList.remove('active');
+            updateUI(); // Aggiorna il valore economico in Home
+            showNotification('Prezzi Salvati', 'Il Valore Economico in Home è stato aggiornato.', 'success');
         });
     }
 

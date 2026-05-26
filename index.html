@@ -22,9 +22,12 @@
             <h1>D.U.B.I.A.</h1>
             <span class="subtitle">Dynamic Updating Biomass Inference Algorithm</span>
         </div>
-        <div class="health-indicator" id="healthIndicator">
-            <span class="health-value" id="healthValue">--%</span>
-            <span class="health-label">Indice Salute (H)</span>
+        <div class="header-right">
+            <button id="btnOpenPrezzi" class="btn-prezzi" title="Personalizza prezzi per tipologia">💰 Prezzi</button>
+            <div class="health-indicator" id="healthIndicator">
+                <span class="health-value" id="healthValue">--%</span>
+                <span class="health-label">Indice Salute (H)</span>
+            </div>
         </div>
     </header>
 
@@ -33,6 +36,7 @@
         <button class="tab-btn active" data-target="dashboard">Dashboard</button>
         <button class="tab-btn" data-target="census">Censimento</button>
         <button class="tab-btn" data-target="diagnostics">Diagnostica</button>
+        <button class="tab-btn" data-target="clienti">👥 Clienti</button>
     </nav>
 
     <!-- MAIN CONTENT -->
@@ -391,6 +395,92 @@
             </div>
 
         </section>
+
+        <!-- CLIENTI TAB -->
+        <section id="clienti" class="tab-content">
+
+            <!-- Stat Cards -->
+            <div class="clienti-stats-grid">
+                <div class="card stat-card clienti-stat-card">
+                    <h3>Clienti Registrati</h3>
+                    <div class="value" id="clientiTotali">0</div>
+                </div>
+                <div class="card stat-card clienti-stat-card" style="border-color: var(--accent-purple);">
+                    <h3>Cessioni Totali</h3>
+                    <div class="value" id="cessioniTotali" style="color: var(--accent-purple);">0</div>
+                </div>
+                <div class="card stat-card clienti-stat-card" style="border-color: #3498db;">
+                    <h3>Grammi Ceduti</h3>
+                    <div class="value" id="grammiCeduti" style="color: #3498db;">0 g</div>
+                </div>
+                <div class="card stat-card clienti-stat-card" style="border-color: #f39c12;">
+                    <h3>Incassato Totale</h3>
+                    <div class="value" id="euroTotale" style="color: #f39c12;">€ 0,00</div>
+                </div>
+            </div>
+
+            <!-- Database Clienti -->
+            <div class="card">
+                <div class="clienti-card-header">
+                    <div>
+                        <h3>Database Clienti</h3>
+                        <p class="subtitle-text" style="margin-bottom:0;">Anagrafica acquirenti abituali</p>
+                    </div>
+                    <button id="btnNuovoCliente" class="btn-standard btn-primary">+ Nuovo Cliente</button>
+                </div>
+
+                <!-- Search Bar -->
+                <div class="clienti-search-wrapper">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="clientiSearch" class="clienti-search-input" placeholder="Cerca per nome, città, animale...">
+                </div>
+
+                <!-- Lista Clienti -->
+                <div id="clientiList">
+                    <div class="clienti-empty">
+                        <span class="clienti-empty-icon">👥</span>
+                        <p>Nessun cliente ancora registrato.</p>
+                        <p class="subtitle-text">Clicca su <strong>+ Nuovo Cliente</strong> per iniziare.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Storico Cessioni -->
+            <div class="card">
+                <div class="clienti-card-header" style="margin-bottom: 1rem;">
+                    <div>
+                        <h3>Storico Cessioni</h3>
+                        <p class="subtitle-text" style="margin-bottom:0;">Registro completo delle blatte cedute</p>
+                    </div>
+                    <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                        <select id="cessioniFilterCliente" class="input-standard" style="width:auto; font-size:0.85rem; padding:0.5rem 0.75rem;">
+                            <option value="">Tutti i clienti</option>
+                        </select>
+                        <button id="btnNuovaCessione" class="btn-standard btn-primary" style="white-space:nowrap;">📦 Nuova Cessione</button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="cessioniTable">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Cliente</th>
+                                <th>Tipo Blatta</th>
+                                <th>Quantità</th>
+                                <th>Totale €</th>
+                                <th>Note</th>
+                                <th>Azioni</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="7" class="table-empty">Nessuna cessione registrata.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div style="height: 4rem;"></div>
+        </section>
     </main>
 
     <!-- FLOATING ACTION BUTTON -->
@@ -470,6 +560,169 @@
                 <div class="modal-actions">
                     <button type="button" class="btn-standard btn-cancel" id="btnCancelCalib">Annulla</button>
                     <button type="submit" class="btn-standard btn-primary">Applica Calibrazione</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL NUOVO/MODIFICA CLIENTE -->
+    <div class="modal-overlay" id="clientModal">
+        <div class="modal modal-clienti">
+            <h2 id="clientModalTitle">Nuovo Cliente</h2>
+            <form id="clientForm">
+                <input type="hidden" id="clientId">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label for="clientNome">Nome *</label>
+                        <input type="text" id="clientNome" class="input-standard" required placeholder="Es. Marco">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label for="clientCognome">Cognome *</label>
+                        <input type="text" id="clientCognome" class="input-standard" required placeholder="Es. Rossi">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="clientCitta">Città</label>
+                    <input type="text" id="clientCitta" class="input-standard" placeholder="Es. Milano">
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label for="clientTelefono">Telefono</label>
+                        <input type="tel" id="clientTelefono" class="input-standard" placeholder="+39 ...">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label for="clientEmail">Email</label>
+                        <input type="email" id="clientEmail" class="input-standard" placeholder="nome@email.com">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="clientAnimale">Animale Allevato</label>
+                    <select id="clientAnimale" class="input-standard">
+                        <option value="rettile">🦎 Rettile</option>
+                        <option value="anfibio">🐸 Anfibio</option>
+                        <option value="uccello">🦜 Uccello</option>
+                        <option value="mammifero">🐾 Mammifero</option>
+                        <option value="pesce">🐟 Pesce</option>
+                        <option value="altro">🐾 Altro</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="clientNote">Note</label>
+                    <textarea id="clientNote" class="input-standard" rows="2" placeholder="Preferenze, frequenza acquisti, ecc."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-standard btn-cancel" id="btnCancelClient">Annulla</button>
+                    <button type="submit" class="btn-standard btn-primary">Salva Cliente</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL NUOVA CESSIONE -->
+    <div class="modal-overlay" id="cessioneModal">
+        <div class="modal modal-clienti">
+            <h2>📦 Nuova Cessione</h2>
+            <form id="cessioneForm">
+                <div class="form-group">
+                    <label for="cessioneCliente">Cliente *</label>
+                    <select id="cessioneCliente" class="input-standard" required>
+                        <option value="">— Seleziona cliente —</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="cessioneData">Data *</label>
+                    <input type="date" id="cessioneData" class="input-standard" required>
+                </div>
+                <div class="form-group">
+                    <label for="cessioneTipo">Tipo Blatta *</label>
+                    <select id="cessioneTipo" class="input-standard" required></select>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label for="cessioneQuantita">Quantità (grammi) *</label>
+                        <input type="number" id="cessioneQuantita" class="input-standard" min="0.1" step="0.1" required placeholder="Es. 50">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label for="cessionePrezzoUnit">Prezzo unitario (€/g)</label>
+                        <input type="number" id="cessionePrezzoUnit" class="input-standard" min="0" step="0.01" placeholder="0.50">
+                    </div>
+                </div>
+                <input type="hidden" id="cessioneTotale">
+                <div class="cessione-totale-preview" id="cessioneTotalePreview">Totale: € 0,00 · ≈ 0 individui</div>
+                <div class="form-group">
+                    <label for="cessioneNote">Note</label>
+                    <textarea id="cessioneNote" class="input-standard" rows="2" placeholder="Es. consegna a mano, sconto applicato..."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-standard btn-cancel" id="btnCancelCessione">Annulla</button>
+                    <button type="submit" class="btn-standard btn-primary">Registra Cessione</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL PREZZI -->
+    <div class="modal-overlay" id="prezziModal">
+        <div class="modal modal-prezzi">
+            <h2>💰 Prezzi per Tipologia</h2>
+            <p class="subtitle-text" style="margin-bottom:1.5rem;">Imposta il prezzo per grammo di ogni categoria. Il Valore Economico in Home si aggiornerà automaticamente.</p>
+            <form id="prezziForm">
+                <div class="price-rows-container">
+                    <div class="price-row">
+                        <span class="price-row-label">🔴 Femmine Adulte <small>(2.5g)</small></span>
+                        <div class="price-row-input">
+                            <span class="price-currency">€</span>
+                            <input type="number" id="price_FEMALE" class="input-standard" min="0" step="0.01" value="0.50">
+                            <span class="price-unit">/g</span>
+                        </div>
+                    </div>
+                    <div class="price-row">
+                        <span class="price-row-label">🔵 Maschi Adulti <small>(1.5g)</small></span>
+                        <div class="price-row-input">
+                            <span class="price-currency">€</span>
+                            <input type="number" id="price_MALE" class="input-standard" min="0" step="0.01" value="0.40">
+                            <span class="price-unit">/g</span>
+                        </div>
+                    </div>
+                    <div class="price-row">
+                        <span class="price-row-label">🟡 Sub-Adulte <small>(1.6g)</small></span>
+                        <div class="price-row-input">
+                            <span class="price-currency">€</span>
+                            <input type="number" id="price_SUBADULT" class="input-standard" min="0" step="0.01" value="0.30">
+                            <span class="price-unit">/g</span>
+                        </div>
+                    </div>
+                    <div class="price-row">
+                        <span class="price-row-label">🟢 Neanidi Medie <small>(0.8g)</small></span>
+                        <div class="price-row-input">
+                            <span class="price-currency">€</span>
+                            <input type="number" id="price_MEDIUM" class="input-standard" min="0" step="0.01" value="0.20">
+                            <span class="price-unit">/g</span>
+                        </div>
+                    </div>
+                    <div class="price-row">
+                        <span class="price-row-label">⚪ Neanidi Piccole <small>(0.3g)</small></span>
+                        <div class="price-row-input">
+                            <span class="price-currency">€</span>
+                            <input type="number" id="price_SMALL" class="input-standard" min="0" step="0.01" value="0.10">
+                            <span class="price-unit">/g</span>
+                        </div>
+                    </div>
+                    <div class="price-row">
+                        <span class="price-row-label">🟡 Micro-Neanidi <small>(0.1g)</small></span>
+                        <div class="price-row-input">
+                            <span class="price-currency">€</span>
+                            <input type="number" id="price_BABY" class="input-standard" min="0" step="0.01" value="0.05">
+                            <span class="price-unit">/g</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="price-preview-box" id="prezziValoreColoniaPreview">
+                    Valore Colonia stimato: — (inserisci una pesata prima)
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-standard btn-cancel" id="btnCancelPrezzi">Annulla</button>
+                    <button type="submit" class="btn-standard btn-primary">💾 Salva Prezzi</button>
                 </div>
             </form>
         </div>
