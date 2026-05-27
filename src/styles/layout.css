@@ -1,0 +1,314 @@
+/* ═══════════════════════════════════════════════════════════════
+   D.U.B.I.A. — LAYOUT SYSTEM
+   CSS Grid — Rigid Engineering Layout
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── App Shell ─────────────────────────────────────────────────── */
+.app-shell {
+    display: grid;
+    grid-template-columns: var(--sidebar-collapsed) 1fr;
+    grid-template-rows: var(--header-height) 1fr;
+    grid-template-areas:
+        "sidebar header"
+        "sidebar main";
+    min-height: 100vh;
+    transition: grid-template-columns var(--transition-slow);
+}
+
+.app-shell.sidebar-expanded {
+    grid-template-columns: var(--sidebar-expanded) 1fr;
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────── */
+.sidebar {
+    grid-area: sidebar;
+    background: var(--surface-1);
+    border-right: 1px solid var(--border-primary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: var(--sp-4);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    z-index: var(--z-sidebar);
+    overflow: hidden;
+    transition: width var(--transition-slow);
+}
+
+.sidebar-logo {
+    width: 100%;
+    padding: var(--sp-3) var(--sp-2);
+    text-align: center;
+    margin-bottom: var(--sp-6);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.sidebar-logo .logo-mark {
+    font-family: var(--font-mono);
+    font-size: var(--fs-md);
+    font-weight: 700;
+    color: var(--accent-cyan);
+    letter-spacing: 2px;
+}
+
+.sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    width: 100%;
+    padding: 0 var(--sp-2);
+    flex: 1;
+}
+
+.nav-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-3);
+    color: var(--text-muted);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.nav-item:hover {
+    color: var(--text-primary);
+    background: var(--surface-2);
+}
+
+.nav-item.active {
+    color: var(--accent-cyan);
+}
+
+/* Active indicator — vertical bar */
+.nav-item.active::before {
+    content: '';
+    position: absolute;
+    left: -8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    background: var(--accent-cyan);
+    border-radius: 0 2px 2px 0;
+    box-shadow: 0 0 8px var(--accent-cyan-40);
+}
+
+.nav-item svg {
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    stroke-width: 1.5;
+    fill: none;
+    stroke: currentColor;
+}
+
+.nav-item .nav-label {
+    font-size: var(--fs-sm);
+    font-weight: 500;
+    opacity: 0;
+    transition: opacity var(--transition-base);
+}
+
+.app-shell.sidebar-expanded .nav-item .nav-label {
+    opacity: 1;
+}
+
+/* Sidebar toggle button */
+.sidebar-toggle {
+    padding: var(--sp-3);
+    margin-top: auto;
+    margin-bottom: var(--sp-4);
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: color var(--transition-fast);
+    background: none;
+    border: none;
+}
+.sidebar-toggle:hover {
+    color: var(--text-primary);
+}
+.sidebar-toggle svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    transition: transform var(--transition-base);
+}
+.app-shell.sidebar-expanded .sidebar-toggle svg {
+    transform: rotate(180deg);
+}
+
+/* ── Header (Control Deck) ─────────────────────────────────────── */
+.header {
+    grid-area: header;
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--border-primary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--sp-6);
+    height: var(--header-height);
+    position: sticky;
+    top: 0;
+    z-index: var(--z-header);
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-4);
+}
+
+.header-title {
+    font-family: var(--font-mono);
+    font-size: var(--fs-md);
+    font-weight: 700;
+    color: var(--accent-cyan);
+    letter-spacing: 3px;
+}
+
+.header-subtitle {
+    font-size: var(--fs-xs);
+    color: var(--text-muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-6);
+}
+
+/* System status indicator */
+.system-status {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    font-size: var(--fs-xs);
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    box-shadow: 0 0 6px var(--accent-green), 0 0 12px rgba(0, 255, 102, 0.3);
+    animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.status-dot.offline {
+    background: var(--accent-critical);
+    box-shadow: 0 0 6px var(--accent-critical);
+    animation: none;
+}
+
+/* Digital clock */
+.header-clock {
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+    min-width: 70px;
+    text-align: right;
+}
+
+/* Health index in header */
+.header-health {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-1) var(--sp-3);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+}
+
+.header-health-value {
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    color: var(--accent-green);
+}
+
+.header-health-value.warning {
+    color: var(--accent-yellow);
+}
+.header-health-value.critical {
+    color: var(--accent-critical);
+}
+
+.header-health-label {
+    font-size: var(--fs-xs);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* ── Main Content ──────────────────────────────────────────────── */
+.main-content {
+    grid-area: main;
+    padding: var(--sp-6);
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Dashboard 3-column layout */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 2fr 1fr;
+    gap: var(--sp-4);
+    align-items: start;
+}
+
+.dashboard-col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+}
+
+/* Page sections — single column pages */
+.page-sections {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+    max-width: 1200px;
+}
+
+/* ── Section Headers ───────────────────────────────────────────── */
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--sp-4);
+}
+
+.section-title {
+    font-size: var(--fs-lg);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* ── Page visibility ───────────────────────────────────────────── */
+.page {
+    display: none;
+}
+.page.active {
+    display: block;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}

@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>D.U.B.I.A. — Dynamic Updating Biomass Inference Algorithm</title>
+    <meta name="description" content="Terminale di controllo biotecnologico per allevamento Blaptica dubia. Monitoraggio biomassa, predizioni ML, censimento demografico e diagnostica.">
+    <meta name="theme-color" content="#0B0C10">
+    <link rel="manifest" href="manifest.json">
+
+    <!-- Google Fonts: Inter (UI) + JetBrains Mono (Data) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- ApexCharts -->
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+    <!-- D.U.B.I.A. Design System -->
+    <link rel="stylesheet" href="src/styles/variables.css">
+    <link rel="stylesheet" href="src/styles/base.css">
+    <link rel="stylesheet" href="src/styles/layout.css">
+    <link rel="stylesheet" href="src/styles/animations.css">
+    <link rel="stylesheet" href="src/styles/components.css">
+    <link rel="stylesheet" href="src/styles/responsive.css">
+</head>
+<body>
+
+<div class="app-shell" id="appShell">
+
+    <!-- ═══════════════════════════════════════════════════════════
+         SIDEBAR (Desktop Navigation)
+         ═══════════════════════════════════════════════════════════ -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-logo">
+            <div class="logo-mark">D.U.B.I.A.</div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a href="#" class="nav-item active" data-page="dashboard" id="navDashboard">
+                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                <span class="nav-label">Dashboard</span>
+            </a>
+            <a href="#" class="nav-item" data-page="census" id="navCensus">
+                <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span class="nav-label">Censimento</span>
+            </a>
+            <a href="#" class="nav-item" data-page="diagnostics" id="navDiagnostics">
+                <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                <span class="nav-label">Diagnostica</span>
+            </a>
+            <a href="#" class="nav-item" data-page="clients" id="navClients">
+                <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <span class="nav-label">Clienti</span>
+            </a>
+        </nav>
+
+        <button class="sidebar-toggle" id="sidebarToggle" title="Espandi sidebar">
+            <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+    </aside>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         HEADER (Control Deck)
+         ═══════════════════════════════════════════════════════════ -->
+    <header class="header">
+        <div class="header-left">
+            <div>
+                <div class="header-title">D.U.B.I.A.</div>
+                <div class="header-subtitle">Dynamic Updating Biomass Inference Algorithm</div>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="system-status" id="systemStatus">
+                <span class="status-dot" id="statusDot"></span>
+                <span class="status-text">System Online</span>
+            </div>
+            <div class="header-health" id="headerHealth">
+                <span class="header-health-value" id="headerHealthValue">--%</span>
+                <span class="header-health-label">H Index</span>
+            </div>
+            <div class="header-clock" id="headerClock">--:--:--</div>
+        </div>
+    </header>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         MAIN CONTENT AREA
+         ═══════════════════════════════════════════════════════════ -->
+    <main class="main-content" id="mainContent">
+
+        <!-- ╔═══════════════════════════════════════════════════════╗
+             ║  PAGE: DASHBOARD                                      ║
+             ╚═══════════════════════════════════════════════════════╝ -->
+        <section class="page active" id="pageDashboard">
+            <div class="dashboard-grid">
+
+                <!-- ── Left Column: Input & Status ──────────────── -->
+                <div class="dashboard-col" id="dashLeft">
+                    <!-- Quick Actions -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-header-title">Azioni Rapide</span>
+                            <span class="card-status ok"></span>
+                        </div>
+                        <div class="card-body" style="display:flex;flex-direction:column;gap:var(--sp-2);">
+                            <button class="quick-action" id="btnQuickWeigh">
+                                <span class="quick-action-icon">⚖️</span>
+                                <span class="quick-action-text">Nuova Pesata</span>
+                            </button>
+                            <button class="quick-action" id="btnQuickFood">
+                                <span class="quick-action-icon">🥬</span>
+                                <span class="quick-action-text">Aggiungi Cibo</span>
+                            </button>
+                            <button class="quick-action" id="btnQuickHarvest">
+                                <span class="quick-action-icon">✂️</span>
+                                <span class="quick-action-text">Registra Prelievo</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Parametri Live -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-header-title">Parametri Live</span>
+                            <span class="card-status ok" id="paramsStatus"></span>
+                        </div>
+                        <div class="card-body">
+                            <div class="ledger">
+                                <div class="ledger-row">
+                                    <span class="ledger-label">θ₁ (Resa Alim.)</span>
+                                    <span class="ledger-value" id="theta1Value" data-scramble>--</span>
+                                </div>
+                                <div class="ledger-row">
+                                    <span class="ledger-label">θ₂ (Crescita Nat.)</span>
+                                    <span class="ledger-value" id="theta2Value" data-scramble>--</span>
+                                </div>
+                                <div class="ledger-row">
+                                    <span class="ledger-label">Mortalità Fisiologica</span>
+                                    <span class="ledger-value"><input type="number" id="inputMortality" style="width:60px;text-align:right;" min="0" max="100" step="0.1" value="1.5"><span class="text-muted" style="margin-left:4px;">%</span></span>
+                                </div>
+                                <div class="ledger-row">
+                                    <span class="ledger-label">FCR Medio</span>
+                                    <span class="ledger-value" id="fcrValue" data-scramble>--</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Stato Salute -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-header-title">Stato Salute</span>
+                            <span class="card-status" id="healthStatus"></span>
+                        </div>
+                        <div class="card-body" style="text-align:center;">
+                            <div class="stat-value green" id="healthValue" style="font-size:var(--fs-3xl);" data-scramble>--%</div>
+                            <div class="stat-label" style="margin-top:var(--sp-2);">Indice H = (θ₁ / θ₁*) × 100</div>
+                        </div>
+                    </div>
+
+                    <!-- Ultime Attività -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-header-title">Log Attività</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="activity-log" id="activityLog">
+                                <div class="activity-item">
+                                    <span class="activity-dot"></span>
+                                    <span class="activity-text">In attesa di dati...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Center Column: Core Data & Charts ────────── -->
+                <div class="dashboard-col" id="dashCenter">
+                    <!-- Biomassa Totale -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-header-title">Biomassa Totale Colonia</span>
+                            <span class="card-status ok" id="biomassStatus"></span>
+                        </div>
+                        <div class="card-body" style="text-align:center;padding:var(--sp-6) var(--sp-4);">
+                            <div class="stat-value hero cyan" id="realWeightValue" data-scramble>-- g</div>
+                            <div class="stat-sublabel" style="margin-top:var(--sp-2);">Peso reale rilevato</div>
+                        </div>
+                    </div>
+
+                    <!-- Predizione + Valore Economico Row -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-4);">
+                        <div class="card">
+                            <div class="card-header">
+                                <span class="card-header-title">Peso Teorico Stimato</span>
+                            </div>
+                            <div class="card-body" style="text-align:center;">
+                                <div class="stat-value" id="predWeightValue" data-scramble>-- g</div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <span class="card-header-title">Valore Economico</span>
+                            </div>
+                            <div class="card-body" style="text-align:center;">
+                                <div class="stat-value yellow" id="economicValueValue" data-scramble>-- €</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Water + Pregnant Row -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-4);">
+                        <div class="card">
+                            <div class="card-header">
+                                <span class="card-header-title">Fabbisogno Idrico</span>
+                            </div>
+                            <div class="card-body" style="text-align:center;">
+                                <div class="stat-value" style="color:#3498db;" id="waterNeedValue" data-scramble>-- g/gg</div>
+                                <div class="stat-sublabel">Cibo umido raccomandato/giorno</div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <span class="card-header-title">Femmine Gravide</span>
+                            </div>
+                            <div class="card-body" style="text-align:center;">
+                                <div class="stat-value purple" id="pregnantRatioValue" data-scramble>-- %</div>
+                                <div class="stat-sublabel">Stima (+0.4g/femmina)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Grafico Biomassa Principale -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-header-title">Andamento Biomassa — Storico vs Predizione</span>
+                            <span class="card-status ok"></span>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container" id="biomassChartContainer">
+                                <div id="biomassChart"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Distribuzione Demografica (Barre Orizzontali) -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-header-title">Distribuzione Demografica</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="demo-bar-group" id="demoBars">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Right Column: Predictions & MSY ──────────── -->
+                <div class="dashboard-col" id="dashRight">
+                    <!-- Orizzonte Temporale Δg -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-header-title">Orizzonte Temporale (Δg)</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="slider-group">
+                                <input type="range" id="deltaGSlider" min="1" max="365" step="1" value="30">
+                                <input type="number" id="deltaGInput" style="width:60px;text-align:right;" min="1" max="365" step="1" value="30">
+                                <span class="text-muted" style="font-size:var(--fs-xs);">gg</span>
+                            </div>
+                            <div style="display:flex;gap:var(--sp-2);margin-top:var(--sp-3);flex-wrap:wrap;">
+                                <button class="btn-preset" data-val="7">+7 gg</button>
+                                <button class="btn-preset" data-val="14">+14 gg</button>
+                                <button class="btn-preset active" data-val="30">+30 gg</button>
+                                <button class="btn-preset" data-val="90">+90 gg</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Simulatore MSY -->
+                    <div class="card" id="msyCard">
+                        <div class="card-header">
+                            <span class="card-header-title">Simulatore Prelievo (MSY)</span>
+                            <span class="card-status ok" id="msyStatus"></span>
+                        </div>
+                        <div class="card-body">
+                            <!-- MSY Threshold -->
+                            <div style="padding:var(--sp-2) var(--sp-3);background:var(--accent-warning-10);border:1px solid var(--accent-warning);border-radius:var(--radius-sm);margin-bottom:var(--sp-3);">
+                                <div style="display:flex;justify-content:space-between;align-items:center;">
+                                    <span class="card-header-title" style="color:var(--accent-warning);">Soglia MSY 30gg</span>
+                                    <span class="mono" style="font-size:var(--fs-md);color:var(--accent-warning);font-weight:700;" id="msyValueText">-- g</span>
+                                </div>
+                            </div>
+
+                            <!-- Category Select -->
+                            <div class="form-group">
+                                <label>Modalità</label>
+                                <select id="harvestCategory">
+                                    <option value="ALL">Generico (Tutte le taglie)</option>
+                                    <option value="MALE">Solo Maschi (1.5g)</option>
+                                    <option value="FEMALE">Solo Femmine (2.5g)</option>
+                                    <option value="SUBADULT">Sub-Adulte (1.6g)</option>
+                                    <option value="MEDIUM">Neanidi Medie (0.8g)</option>
+                                    <option value="SMALL">Neanidi Piccole (0.3g)</option>
+                                    <option value="BABY">Micro-Neanidi (0.1g)</option>
+                                </select>
+                            </div>
+
+                            <!-- Amount + slider -->
+                            <div class="form-group">
+                                <label>Quantità (grammi)</label>
+                                <div class="slider-group">
+                                    <input type="range" id="harvestSlider" min="0" max="500" step="1" value="0">
+                                    <input type="number" id="harvestAmount" style="width:70px;text-align:right;" min="0" step="1" value="0">
+                                    <span class="text-muted" style="font-size:var(--fs-xs);">g</span>
+                                </div>
+                                <div class="mono text-muted" style="font-size:var(--fs-xs);margin-top:var(--sp-1);" id="harvestCountLabel"></div>
+                            </div>
+
+                            <!-- Cyclic -->
+                            <label style="display:flex;align-items:center;gap:var(--sp-2);cursor:pointer;text-transform:none;font-size:var(--fs-sm);margin-bottom:var(--sp-3);">
+                                <input type="checkbox" id="harvestCyclic">
+                                <span>Prelievo ciclico (settimanale)</span>
+                            </label>
+
+                            <!-- MSY Warning -->
+                            <div id="msyWarning" class="hidden" style="color:var(--accent-critical);font-size:var(--fs-xs);padding:var(--sp-2) var(--sp-3);background:var(--accent-critical-10);border-radius:var(--radius-sm);margin-bottom:var(--sp-3);">
+                                ⚠️ Prelievo supera la Soglia MSY. La colonia andrà in declino.
+                            </div>
+
+                            <!-- Future estimate -->
+                            <div class="ledger" style="margin-bottom:var(--sp-3);">
+                                <div class="ledger-row">
+                                    <span class="ledger-label">Stima a <span id="harvestDaysLabel">30</span> gg</span>
+                                    <span class="ledger-value green" id="harvestFutureWeight" data-scramble>-- g</span>
+                                </div>
+                            </div>
+
+                            <!-- Suggester -->
+                            <div style="padding:var(--sp-2) var(--sp-3);background:var(--accent-purple-10);border-radius:var(--radius-sm);margin-bottom:var(--sp-3);">
+                                <div class="card-header-title" style="color:var(--accent-purple);margin-bottom:var(--sp-1);">Suggeritore Intelligente</div>
+                                <div style="font-size:var(--fs-xs);color:var(--text-muted);" id="optimalSuggesterText">Analisi in corso...</div>
+                            </div>
+
+                            <button class="btn btn-warning" style="width:100%;" id="btnConfirmHarvestSim">Conferma Prelievo</button>
+                        </div>
+                    </div>
+
+                    <!-- Previsioni 30/90 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-header-title">Previsioni</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="ledger">
+                                <div class="ledger-row">
+                                    <span class="ledger-label">+30 giorni</span>
+                                    <span class="ledger-value cyan" id="pred30Value" data-scramble>-- g</span>
+                                </div>
+                                <div class="ledger-row">
+                                    <span class="ledger-label">+90 giorni</span>
+                                    <span class="ledger-value cyan" id="pred90Value" data-scramble>-- g</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ╔═══════════════════════════════════════════════════════╗
+             ║  PAGE: CENSIMENTO                                     ║
+             ╚═══════════════════════════════════════════════════════╝ -->
+        <section class="page" id="pageCensus">
+            <div class="page-sections">
+                <!-- Calibrazione -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-header-title">Calibrazione Manuale Demografia</span>
+                        <button class="btn btn-primary btn-sm" id="btnCalibrate">Avvia Calibrazione</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="stat-sublabel">Inserisci il conteggio reale di una categoria per forzare l'algoritmo a correggere le stime.</div>
+                    </div>
+                </div>
+
+                <!-- Sex Ratio -->
+                <div class="card" id="sexRatioCard">
+                    <div class="card-header">
+                        <span class="card-header-title">Rapporto Sessuale (M:F)</span>
+                        <span class="card-status" id="sexRatioStatus"></span>
+                    </div>
+                    <div class="card-body" style="text-align:center;">
+                        <div class="stat-value" id="sexRatioValue" style="font-size:var(--fs-xl);" data-scramble>--</div>
+                        <div class="stat-sublabel" id="sexRatioStatusText" style="margin-top:var(--sp-2);">Calcolo in corso...</div>
+                    </div>
+                </div>
+
+                <!-- Allarme Demografico -->
+                <div class="card hidden" id="demographicAlarmCard" style="border-color:var(--accent-critical);">
+                    <div class="card-header">
+                        <span class="card-header-title" style="color:var(--accent-critical);">Allarme Demografico</span>
+                        <span class="card-status error"></span>
+                    </div>
+                    <div class="card-body">
+                        <div id="demographicAlarmText" style="font-size:var(--fs-sm);color:var(--accent-critical);"></div>
+                    </div>
+                </div>
+
+                <!-- Censimento Table -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-header-title">Censimento Demografico — Modulo 4</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="formula-box" style="margin-bottom:var(--sp-4);">
+                            <div class="formula-row"><span class="formula-label">W_adulti</span><span class="formula-eq">= W_t × A_t</span></div>
+                            <div class="formula-row"><span class="formula-label">W_neanidi</span><span class="formula-eq">= W_t × (1 − A_t)</span></div>
+                            <div class="formula-row"><span class="formula-label">N_femmine</span><span class="formula-eq">= (W_adulti × 0.77) / 2.5g</span></div>
+                            <div class="formula-row"><span class="formula-label">N_maschi</span><span class="formula-eq">= (W_adulti × 0.23) / 1.5g</span></div>
+                        </div>
+                        <div class="table-container">
+                            <table id="censusTable">
+                                <thead>
+                                    <tr>
+                                        <th>Stadio Vitale</th>
+                                        <th>Individui (N)</th>
+                                        <th>Biomassa (g)</th>
+                                        <th>Destinazione</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="censusTableBody">
+                                    <tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Inserisci una pesata per il censimento...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Piramide Demografica -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-header-title">Piramide Demografica</span>
+                    </div>
+                    <div class="card-body">
+                        <div id="maturationTimerCard" class="hidden" style="font-size:var(--fs-xs);color:var(--accent-purple);margin-bottom:var(--sp-3);">
+                            ⏱️ <strong>Timer Maturazione:</strong> <span id="maturationTimerText">...</span>
+                        </div>
+                        <div class="demo-bar-group" id="censusBars">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ╔═══════════════════════════════════════════════════════╗
+             ║  PAGE: DIAGNOSTICA                                    ║
+             ╚═══════════════════════════════════════════════════════╝ -->
+        <section class="page" id="pageDiagnostics">
+            <div class="page-sections">
+                <!-- Manutenzione -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-header-title">Registro Manutenzione</span>
+                    </div>
+                    <div class="card-body" style="display:flex;flex-direction:column;gap:var(--sp-3);">
+                        <label style="display:flex;align-items:center;gap:var(--sp-2);cursor:pointer;text-transform:none;">
+                            <input type="checkbox" id="taskCleaning"> Pulizia Fondo Teca
+                        </label>
+                        <label style="display:flex;align-items:center;gap:var(--sp-2);cursor:pointer;text-transform:none;">
+                            <input type="checkbox" id="taskCartons"> Sostituzione Cartoni Uova
+                        </label>
+                        <label style="display:flex;align-items:center;gap:var(--sp-2);cursor:pointer;text-transform:none;">
+                            <input type="checkbox" id="taskTreatments"> Trattamenti Antiacaro
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Grafico H -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-header-title">Storico Indice Salute (H)</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="h-legend">
+                            <span class="h-legend-item"><span class="h-legend-dot optimal"></span> ≥ 90% Ottimale</span>
+                            <span class="h-legend-item"><span class="h-legend-dot warning"></span> 75–89% Warning</span>
+                            <span class="h-legend-item"><span class="h-legend-dot critical"></span> &lt; 75% Critico</span>
+                        </div>
+                        <div class="chart-container" id="healthChartContainer">
+                            <div id="healthChart"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Diagnostica Differenziale -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-header-title">🔬 Diagnostica Differenziale</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="diag-rules" style="margin-bottom:var(--sp-4);">
+                            <div class="diag-rule"><span class="diag-rule-cond">θ₁ &lt; 80% default</span><span class="diag-rule-arrow">→</span><span class="diag-rule-label">Qualità Nutrizionale / Idratazione</span></div>
+                            <div class="diag-rule"><span class="diag-rule-cond">θ₂ &lt; 80% default</span><span class="diag-rule-arrow">→</span><span class="diag-rule-label">Stress Termico / Umidità</span></div>
+                            <div class="diag-rule"><span class="diag-rule-cond">H &lt; 75%</span><span class="diag-rule-arrow">→</span><span class="diag-rule-label">Senescenza / Inbreeding</span></div>
+                        </div>
+                        <div class="diag-panel" id="differentialDiagnosticsPanel">
+                            <div class="diag-ok">
+                                <span>⏳</span>
+                                <div>
+                                    <strong>In attesa di dati...</strong>
+                                    <div class="diag-ok-text">Inserisci almeno una pesata.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Log & History -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-header-title">Log Pesate & Manutenzione</span>
+                        <div style="display:flex;gap:var(--sp-2);">
+                            <button class="btn btn-ghost btn-sm" id="btnNewBlood">+ Nuovo Sangue</button>
+                            <button class="btn btn-ghost btn-sm" id="btnExportCSV">Esporta CSV</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-container">
+                            <table id="historyTable">
+                                <thead>
+                                    <tr>
+                                        <th>Data</th>
+                                        <th>Peso (g)</th>
+                                        <th>Cibo (g)</th>
+                                        <th>Prelievo</th>
+                                        <th>FCR</th>
+                                        <th>H (%)</th>
+                                        <th>Note</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ╔═══════════════════════════════════════════════════════╗
+             ║  PAGE: CLIENTI                                        ║
+             ╚═══════════════════════════════════════════════════════╝ -->
+        <section class="page" id="pageClients">
+            <div class="page-sections">
+                <!-- Stats -->
+                <div class="stats-grid" id="clientsStatsGrid">
+                    <div class="card">
+                        <div class="card-header"><span class="card-header-title">Clienti</span></div>
+                        <div class="card-body" style="text-align:center;">
+                            <div class="stat-value cyan" id="clientiTotali">0</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header"><span class="card-header-title">Cessioni</span></div>
+                        <div class="card-body" style="text-align:center;">
+                            <div class="stat-value purple" id="cessioniTotali">0</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header"><span class="card-header-title">Grammi Ceduti</span></div>
+                        <div class="card-body" style="text-align:center;">
+                            <div class="stat-value" style="color:#3498db;" id="grammiCeduti">0 g</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header"><span class="card-header-title">Incassato</span></div>
+                        <div class="card-body" style="text-align:center;">
+                            <div class="stat-value yellow" id="euroTotale">€ 0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Database Clienti -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-header-title">Database Clienti</span>
+                        <button class="btn btn-primary btn-sm" id="btnNuovoCliente">+ Nuovo Cliente</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="client-search-wrapper">
+                            <span class="search-icon">🔍</span>
+                            <input type="text" id="clientiSearch" class="client-search-input" placeholder="Cerca per nome, città, animale...">
+                        </div>
+                        <div class="clients-list" id="clientiList">
+                            <div class="clients-empty">
+                                <span class="clients-empty-icon">👥</span>
+                                <p>Nessun cliente registrato.</p>
+                                <div class="stat-sublabel">Clicca + Nuovo Cliente per iniziare.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Storico Cessioni -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-header-title">Storico Cessioni</span>
+                        <div style="display:flex;gap:var(--sp-2);align-items:center;">
+                            <select id="cessioniFilterCliente" style="width:auto;font-size:var(--fs-xs);padding:var(--sp-1) var(--sp-2);">
+                                <option value="">Tutti i clienti</option>
+                            </select>
+                            <button class="btn btn-primary btn-sm" id="btnNuovaCessione">📦 Cessione</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-container">
+                            <table id="cessioniTable">
+                                <thead>
+                                    <tr>
+                                        <th>Data</th>
+                                        <th>Cliente</th>
+                                        <th>Tipo</th>
+                                        <th>Quantità</th>
+                                        <th>€</th>
+                                        <th>Note</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cessioniTableBody">
+                                    <tr><td colspan="7" style="text-align:center;color:var(--text-muted);">Nessuna cessione.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     BOTTOM NAVIGATION (Mobile Only)
+     ═══════════════════════════════════════════════════════════ -->
+<nav class="bottom-nav" id="bottomNav">
+    <button class="bottom-nav-item active" data-page="dashboard">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span class="bottom-nav-label">Dashboard</span>
+    </button>
+    <button class="bottom-nav-item" data-page="census">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="bottom-nav-label">Censimento</span>
+    </button>
+    <button class="bottom-nav-item" data-page="diagnostics">
+        <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <span class="bottom-nav-label">Diagnostica</span>
+    </button>
+    <button class="bottom-nav-item" data-page="clients">
+        <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span class="bottom-nav-label">Clienti</span>
+    </button>
+</nav>
+
+<!-- FAB -->
+<button class="fab" id="fabAdd" title="Nuova Rilevazione">+</button>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MODALS
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- Modal: Nuovo Evento -->
+<div class="modal-overlay" id="entryModal">
+    <div class="modal">
+        <h2 class="modal-title">Nuovo Evento</h2>
+        <form id="entryForm">
+            <div class="form-group">
+                <label for="inputType">Tipo Evento</label>
+                <select id="inputType" required>
+                    <option value="pesata">Nuova Pesata</option>
+                    <option value="cibo">Aggiunta Cibo</option>
+                    <option value="prelievo">Registra Prelievo</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="inputDate">Data</label>
+                <input type="date" id="inputDate" required>
+            </div>
+            <div class="form-group" id="groupWeight">
+                <label for="inputWeight">Peso Colonia (g)</label>
+                <input type="number" step="0.1" id="inputWeight" required>
+            </div>
+            <div class="form-group" id="groupFoodAmount">
+                <label for="inputFoodAmount">Cibo Somministrato (g)</label>
+                <input type="number" step="0.1" id="inputFoodAmount" required>
+            </div>
+            <div class="form-group" id="groupHarvestAmount">
+                <label for="inputHarvestAmount">Prelievo (g)</label>
+                <input type="number" step="0.1" id="inputHarvestAmount" value="0">
+            </div>
+            <div class="form-group">
+                <label for="inputAdultRatio">Rapporto Adulti (A_t)</label>
+                <div class="slider-group">
+                    <input type="range" id="inputAdultRatioSlider" min="0" max="1" step="0.01" value="0.35">
+                    <input type="number" step="0.01" id="inputAdultRatio" style="width:70px;text-align:right;" min="0" max="1" value="0.35" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="inputNotes">Note</label>
+                <textarea id="inputNotes" rows="2" placeholder="Es. pulizia fondo, sostituzione cartoni..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" id="btnCancelEntry">Annulla</button>
+                <button type="submit" class="btn btn-primary">Salva ed Elabora</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Calibrazione -->
+<div class="modal-overlay" id="calibrationModal">
+    <div class="modal">
+        <h2 class="modal-title">Calibrazione Manuale</h2>
+        <form id="calibrationForm">
+            <div class="form-group">
+                <label for="calibCategory">Categoria</label>
+                <select id="calibCategory" required>
+                    <option value="FEMALE">Femmine Adulte (2.5g)</option>
+                    <option value="MALE">Maschi Adulti (1.5g)</option>
+                    <option value="SUBADULT">Sub-Adulte (1.6g)</option>
+                    <option value="MEDIUM">Neanidi Medie (0.8g)</option>
+                    <option value="SMALL">Neanidi Piccole (0.3g)</option>
+                    <option value="BABY">Micro-Neanidi (0.1g)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="calibCount">Conteggio Reale</label>
+                <input type="number" id="calibCount" min="1" step="1" required>
+            </div>
+            <div class="stat-sublabel" style="margin-top:var(--sp-3);">Correggerà i parametri interni dell'algoritmo.</div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" id="btnCancelCalib">Annulla</button>
+                <button type="submit" class="btn btn-primary">Applica</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Nuovo Cliente -->
+<div class="modal-overlay" id="clientModal">
+    <div class="modal">
+        <h2 class="modal-title" id="clientModalTitle">Nuovo Cliente</h2>
+        <form id="clientForm">
+            <input type="hidden" id="clientId">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3);">
+                <div class="form-group"><label>Nome *</label><input type="text" id="clientNome" required placeholder="Marco"></div>
+                <div class="form-group"><label>Cognome *</label><input type="text" id="clientCognome" required placeholder="Rossi"></div>
+            </div>
+            <div class="form-group"><label>Città</label><input type="text" id="clientCitta" placeholder="Milano"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3);">
+                <div class="form-group"><label>Telefono</label><input type="tel" id="clientTelefono" placeholder="+39..."></div>
+                <div class="form-group"><label>Email</label><input type="email" id="clientEmail" placeholder="nome@email.com"></div>
+            </div>
+            <div class="form-group">
+                <label>Animale</label>
+                <select id="clientAnimale">
+                    <option value="rettile">🦎 Rettile</option>
+                    <option value="anfibio">🐸 Anfibio</option>
+                    <option value="uccello">🦜 Uccello</option>
+                    <option value="mammifero">🐾 Mammifero</option>
+                    <option value="pesce">🐟 Pesce</option>
+                    <option value="altro">🐾 Altro</option>
+                </select>
+            </div>
+            <div class="form-group"><label>Note</label><textarea id="clientNote" rows="2" placeholder="Preferenze, frequenza..."></textarea></div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" id="btnCancelClient">Annulla</button>
+                <button type="submit" class="btn btn-primary">Salva Cliente</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Cessione -->
+<div class="modal-overlay" id="cessioneModal">
+    <div class="modal">
+        <h2 class="modal-title">📦 Nuova Cessione</h2>
+        <form id="cessioneForm">
+            <div class="form-group"><label>Cliente *</label><select id="cessioneCliente" required><option value="">— Seleziona —</option></select></div>
+            <div class="form-group"><label>Data *</label><input type="date" id="cessioneData" required></div>
+            <div class="form-group"><label>Tipo Blatta *</label><select id="cessioneTipo" required></select></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3);">
+                <div class="form-group"><label>Quantità (g) *</label><input type="number" id="cessioneQuantita" min="0.1" step="0.1" required></div>
+                <div class="form-group"><label>Prezzo (€/g)</label><input type="number" id="cessionePrezzoUnit" min="0" step="0.01"></div>
+            </div>
+            <input type="hidden" id="cessioneTotale">
+            <div class="cessione-preview" id="cessioneTotalePreview">Totale: € 0.00 · ≈ 0 individui</div>
+            <div class="form-group"><label>Note</label><textarea id="cessioneNote" rows="2"></textarea></div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" id="btnCancelCessione">Annulla</button>
+                <button type="submit" class="btn btn-primary">Registra</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Prezzi -->
+<div class="modal-overlay" id="prezziModal">
+    <div class="modal">
+        <h2 class="modal-title">💰 Prezzi per Tipologia</h2>
+        <form id="prezziForm">
+            <div class="price-rows" id="priceRows">
+                <!-- Generated by JS -->
+            </div>
+            <div class="price-preview" id="prezziValoreColoniaPreview">Valore Colonia: —</div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" id="btnCancelPrezzi">Annulla</button>
+                <button type="submit" class="btn btn-primary">💾 Salva</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Notification Area -->
+<div class="notification-area" id="notificationArea"></div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCRIPTS — Engine + App Logic
+     ═══════════════════════════════════════════════════════════ -->
+<script src="src/engine/dubia_module.js"></script>
+<script src="src/engine/app_state.js"></script>
+<script src="src/engine/calculations.js"></script>
+<script src="src/components/ui/notifications.js"></script>
+<script src="src/components/ui/number_scramble.js"></script>
+<script src="src/components/charts/biomass_chart.js"></script>
+<script src="src/components/charts/health_chart.js"></script>
+<script src="src/components/charts/demographic_bars.js"></script>
+<script src="src/main.js"></script>
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js').then(registration => {
+                console.log('ServiceWorker registration successful');
+            }).catch(err => {
+                console.log('ServiceWorker registration failed: ', err);
+            });
+        });
+    }
+</script>
+
+</body>
+</html>

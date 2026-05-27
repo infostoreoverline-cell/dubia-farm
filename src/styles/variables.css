@@ -1,0 +1,101 @@
+/* ═══════════════════════════════════════════════════════════════
+   D.U.B.I.A. — DESIGN TOKENS
+   Dark / Industrial / Premium Theme
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+    /* ── Background Layers ("Metal Stack") ─────────────────────── */
+    --deep-void:       #0B0C10;   /* Sfondo principale — ossidiana */
+    --surface-1:       #13151A;   /* Container / Card background */
+    --surface-2:       #1C1F26;   /* Elementi in rilievo */
+    --surface-3:       #242830;   /* Hover states, inputs */
+
+    /* ── Hardware Lines (Bordi & Divisori) ──────────────────────── */
+    --border-primary:  #2D313A;   /* Giunture metalliche */
+    --border-subtle:   #22252A;   /* Linee intra-card */
+    --border-hover:    #3A3F4A;   /* Bordi al hover */
+
+    /* ── Accent Colors ("LED di stato") ────────────────────────── */
+    --accent-cyan:     #00F0FF;   /* Primary — Attivo/Digitale */
+    --accent-green:    #00FF66;   /* KPI positivi, interruttori attivi */
+    --accent-warning:  #FF5500;   /* Caution — Superamento soglie */
+    --accent-yellow:   #F2C94C;   /* Warning leggero */
+    --accent-critical: #C0292B;   /* Rosso cremisi — Allarme */
+    --accent-purple:   #9B59B6;   /* Speciale — Nuovo sangue, calibr. */
+
+    /* ── Accent con opacità (per bagliori, bg tinted) ─────────── */
+    --accent-cyan-10:  rgba(0, 240, 255, 0.10);
+    --accent-cyan-20:  rgba(0, 240, 255, 0.20);
+    --accent-cyan-40:  rgba(0, 240, 255, 0.40);
+    --accent-green-10: rgba(0, 255, 102, 0.10);
+    --accent-green-20: rgba(0, 255, 102, 0.20);
+    --accent-warning-10: rgba(255, 85, 0, 0.10);
+    --accent-warning-20: rgba(255, 85, 0, 0.20);
+    --accent-critical-10: rgba(192, 41, 43, 0.10);
+    --accent-critical-20: rgba(192, 41, 43, 0.20);
+    --accent-purple-10: rgba(155, 89, 182, 0.10);
+
+    /* ── Text Colors ───────────────────────────────────────────── */
+    --text-primary:    #E8E8EC;   /* Bianco sporco (mai #FFF puro) */
+    --text-secondary:  #A0A4B0;   /* Testo descrittivo */
+    --text-muted:      #6B7280;   /* Label, sottotitoli */
+    --text-disabled:   #3F4450;   /* Testo disabilitato */
+
+    /* ── Typography ────────────────────────────────────────────── */
+    --font-ui:         'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono:       'JetBrains Mono', 'Fira Code', 'IBM Plex Mono', 'Consolas', monospace;
+
+    /* ── Font Sizes ────────────────────────────────────────────── */
+    --fs-xs:           0.7rem;     /* 11.2px */
+    --fs-sm:           0.8rem;     /* 12.8px */
+    --fs-base:         0.875rem;   /* 14px — base per UI */
+    --fs-md:           1rem;       /* 16px */
+    --fs-lg:           1.25rem;    /* 20px */
+    --fs-xl:           1.5rem;     /* 24px */
+    --fs-2xl:          2rem;       /* 32px */
+    --fs-3xl:          2.5rem;     /* 40px */
+    --fs-hero:         3.5rem;     /* 56px — Biomassa totale */
+
+    /* ── Spacing ───────────────────────────────────────────────── */
+    --sp-1:            0.25rem;    /* 4px */
+    --sp-2:            0.5rem;     /* 8px */
+    --sp-3:            0.75rem;    /* 12px */
+    --sp-4:            1rem;       /* 16px */
+    --sp-5:            1.25rem;    /* 20px */
+    --sp-6:            1.5rem;     /* 24px */
+    --sp-8:            2rem;       /* 32px */
+    --sp-10:           2.5rem;     /* 40px */
+    --sp-12:           3rem;       /* 48px */
+
+    /* ── Border Radius (Hardware Look — minimal) ───────────────── */
+    --radius-sm:       2px;
+    --radius-md:       3px;
+    --radius-lg:       4px;
+
+    /* ── Shadows (Minimal — Industrial) ────────────────────────── */
+    --shadow-inset:    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --shadow-glow-cyan: 0 0 20px rgba(0, 240, 255, 0.15), 0 0 40px rgba(0, 240, 255, 0.05);
+    --shadow-glow-green: 0 0 20px rgba(0, 255, 102, 0.15), 0 0 40px rgba(0, 255, 102, 0.05);
+    --shadow-glow-warning: 0 0 20px rgba(255, 85, 0, 0.15), 0 0 40px rgba(255, 85, 0, 0.05);
+    --shadow-glow-critical: 0 0 20px rgba(192, 41, 43, 0.25), 0 0 40px rgba(192, 41, 43, 0.10);
+
+    /* ── Transitions ───────────────────────────────────────────── */
+    --ease-out:        cubic-bezier(0.16, 1, 0.3, 1);
+    --transition-fast: 100ms var(--ease-out);
+    --transition-base: 200ms var(--ease-out);
+    --transition-slow: 400ms var(--ease-out);
+
+    /* ── Z-Index Scale ─────────────────────────────────────────── */
+    --z-base:          1;
+    --z-sidebar:       100;
+    --z-header:        200;
+    --z-modal:         1000;
+    --z-notification:  2000;
+    --z-tooltip:       3000;
+
+    /* ── Sidebar ───────────────────────────────────────────────── */
+    --sidebar-collapsed: 56px;
+    --sidebar-expanded:  220px;
+    --header-height:     56px;
+    --bottom-nav-height: 60px;
+}

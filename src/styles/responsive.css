@@ -1,0 +1,196 @@
+/* ═══════════════════════════════════════════════════════════════
+   D.U.B.I.A. — RESPONSIVE BREAKPOINTS
+   Mobile: sidebar → bottom nav, 3-col → 1-col
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Tablet (< 1200px) — 2 columns ────────────────────────────── */
+@media (max-width: 1200px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    .dashboard-col:nth-child(3) {
+        grid-column: 1 / -1;
+    }
+    .dashboard-col:nth-child(3) {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--sp-4);
+    }
+}
+
+/* ── Mobile (< 768px) — full rework ───────────────────────────── */
+@media (max-width: 768px) {
+    :root {
+        --header-height: 48px;
+    }
+
+    /* Hide sidebar, show bottom nav */
+    .app-shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: var(--header-height) 1fr var(--bottom-nav-height);
+        grid-template-areas:
+            "header"
+            "main"
+            "bottomnav";
+    }
+
+    .sidebar {
+        display: none;
+    }
+
+    /* Bottom Navigation Bar */
+    .bottom-nav {
+        display: flex !important;
+        grid-area: bottomnav;
+        background: var(--surface-1);
+        border-top: 1px solid var(--border-primary);
+        justify-content: space-around;
+        align-items: center;
+        padding: 0 var(--sp-2);
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: var(--bottom-nav-height);
+        z-index: var(--z-sidebar);
+    }
+
+    .bottom-nav-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        padding: var(--sp-2);
+        color: var(--text-muted);
+        cursor: pointer;
+        transition: color var(--transition-fast);
+        background: none;
+        border: none;
+        min-width: 48px;
+    }
+
+    .bottom-nav-item.active {
+        color: var(--accent-cyan);
+    }
+
+    .bottom-nav-item svg {
+        width: 20px;
+        height: 20px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.5;
+    }
+
+    .bottom-nav-label {
+        font-family: var(--font-ui);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+    }
+
+    /* Main content — more padding bottom for bottom nav */
+    .main-content {
+        padding: var(--sp-4);
+        padding-bottom: calc(var(--bottom-nav-height) + var(--sp-4));
+    }
+
+    /* Dashboard — single column */
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+    .dashboard-col:nth-child(3) {
+        grid-template-columns: 1fr;
+    }
+
+    /* Header — compact */
+    .header {
+        padding: 0 var(--sp-3);
+    }
+
+    .header-title {
+        font-size: var(--fs-sm);
+        letter-spacing: 2px;
+    }
+
+    .header-subtitle {
+        display: none;
+    }
+
+    .system-status .status-text {
+        display: none;
+    }
+
+    /* Stats grid — 2 columns on mobile */
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    /* Stat value — smaller */
+    .stat-value.hero {
+        font-size: var(--fs-2xl);
+    }
+
+    /* Demo bars — stack */
+    .demo-bar-row {
+        grid-template-columns: 1fr;
+        gap: var(--sp-1);
+    }
+    .demo-bar-value {
+        text-align: left;
+    }
+
+    /* Table — force horizontal scroll */
+    .table-container {
+        font-size: var(--fs-xs);
+    }
+
+    /* Modal — full width */
+    .modal {
+        width: 95%;
+        max-height: 85vh;
+        padding: var(--sp-4);
+    }
+
+    /* FAB — adjust for bottom nav */
+    .fab {
+        bottom: calc(var(--bottom-nav-height) + var(--sp-4));
+    }
+
+    /* Notification — full width */
+    .notification-area {
+        left: var(--sp-3);
+        right: var(--sp-3);
+        max-width: none;
+    }
+
+    /* Ledger — tighter */
+    .ledger-row {
+        padding: var(--sp-1) 0;
+    }
+}
+
+/* ── Small mobile (< 480px) ────────────────────────────────────── */
+@media (max-width: 480px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .header-clock {
+        display: none;
+    }
+
+    .header-health {
+        padding: var(--sp-1) var(--sp-2);
+    }
+
+    .header-health-label {
+        display: none;
+    }
+}
+
+/* ── Desktop: hide bottom nav ──────────────────────────────────── */
+@media (min-width: 769px) {
+    .bottom-nav {
+        display: none !important;
+    }
+}
