@@ -12,6 +12,9 @@
     <script src="dubia_module.js"></script>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- QR Code Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <link rel="stylesheet" href="style.css">
 
 </head>
@@ -34,6 +37,7 @@
     <!-- NAVIGATION TABS -->
     <nav class="tabs">
         <button class="tab-btn active" data-target="dashboard">Dashboard</button>
+        <button class="tab-btn" data-target="colonies">📦 Colonie</button>
         <button class="tab-btn" data-target="census">Censimento</button>
         <button class="tab-btn" data-target="diagnostics">Diagnostica</button>
         <button class="tab-btn" data-target="clienti">👥 Clienti</button>
@@ -395,6 +399,75 @@
             </div>
 
         </section>
+        <!-- COLONIE TAB -->
+        <section id="colonies" class="tab-content">
+            <div class="card">
+                <div class="clienti-card-header" style="margin-bottom: 1rem;">
+                    <div>
+                        <h3>Gestione Colonie</h3>
+                        <p class="subtitle-text" style="margin-bottom:0;">Monitora le singole scatole</p>
+                    </div>
+                    <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                        <button id="btnScanQR" class="btn-standard btn-primary" style="white-space:nowrap; background-color: var(--accent-purple);">📷 Scansiona QR</button>
+                        <button id="btnNuovaColonia" class="btn-standard btn-primary" style="white-space:nowrap;">+ Nuova Colonia</button>
+                    </div>
+                </div>
+
+                <!-- Lista Colonie -->
+                <div id="coloniesList">
+                    <div class="clienti-empty">
+                        <span class="clienti-empty-icon">📦</span>
+                        <p>Nessuna colonia registrata.</p>
+                        <p class="subtitle-text">Clicca su <strong>+ Nuova Colonia</strong> per iniziare.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card" id="colonyDetailCard" style="display: none; border-color: var(--accent-purple);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                    <div>
+                        <h3 id="detailColonyName" style="color: var(--accent-purple); font-size: 1.2rem; margin-bottom: 0.2rem;">Nome Colonia</h3>
+                        <span class="animal-badge" id="detailColonyType" style="background: rgba(142, 68, 173, 0.2); color: var(--accent-purple); border-color: rgba(142, 68, 173, 0.4);">Tipo</span>
+                    </div>
+                    <button class="btn-standard" id="btnDetailClose" style="padding: 0.4rem 0.8rem;">Chiudi</button>
+                </div>
+                
+                <div class="params-grid" style="margin-bottom: 1rem;">
+                    <div class="param">
+                        <span class="param-label">Peso Attuale</span>
+                        <span class="param-value" id="detailColonyWeight">-- g</span>
+                    </div>
+                    <div class="param">
+                        <span class="param-label">Maschi / Femmine</span>
+                        <span class="param-value" style="font-size: 1rem;"><span id="detailColonyMales">--</span> ♂ / <span id="detailColonyFemales">--</span> ♀</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Note Generali</label>
+                    <p class="subtitle-text" id="detailColonyNotes" style="font-size: 0.85rem; font-style: italic;">Nessuna nota.</p>
+                </div>
+
+                <div id="colonyPredictionContainer" style="margin-top: 1rem; margin-bottom: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <h4 style="margin-bottom: 0.5rem; color: var(--accent-purple);">Previsione Demografica</h4>
+                    <p class="subtitle-text" style="margin-bottom: 1rem; font-size: 0.8rem;">Trascina lo slider per vedere l'evoluzione prevista (Biomassa e Popolazione) di questa specifica colonia.</p>
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+                        <input type="range" id="colonyPredictionSlider" min="30" max="365" step="15" value="180" style="flex: 1;">
+                        <span id="colonyPredictionDaysLabel" style="min-width: 60px; text-align: right; font-weight: bold; color: var(--accent-green);">180 gg</span>
+                    </div>
+                    <div style="position: relative; width: 100%; height: 250px;">
+                        <canvas id="colonyPredictionChart"></canvas>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button class="btn-standard btn-primary" id="btnDetailAddMeasure" style="flex: 1; white-space: nowrap;">+ Aggiungi Pesata/Dati</button>
+                    <button class="btn-standard" id="btnDetailShowQR" style="white-space: nowrap;">Mostra QR</button>
+                    <button class="btn-standard btn-danger" id="btnDetailDelete" style="white-space: nowrap;">Elimina</button>
+                </div>
+            </div>
+            <div style="height: 4rem;"></div>
+        </section>
 
         <!-- CLIENTI TAB -->
         <section id="clienti" class="tab-content">
@@ -499,6 +572,13 @@
                         <option value="prelievo">Registra Prelievo</option>
                     </select>
                 </div>
+                <div class="form-group" id="groupColony">
+                    <label for="inputColonyId">Colonia Associata</label>
+                    <select id="inputColonyId" class="input-standard">
+                        <option value="">-- Massa Globale (Tutte le colonie) --</option>
+                    </select>
+                    <p class="subtitle-text" style="font-size:0.75rem; margin-top:0.25rem; margin-bottom:0;">Associa questo evento a una colonia specifica, oppure lascialo globale.</p>
+                </div>
                 <div class="form-group">
                     <label for="inputDate">Data</label>
                     <input type="date" id="inputDate" class="input-standard" required>
@@ -508,18 +588,28 @@
                     <input type="number" step="0.1" id="inputWeight" class="input-standard" required>
                 </div>
                 <div class="form-group" id="groupFoodAmount">
-                    <label for="inputFoodAmount">Cibo Somministrato (grammi)</label>
-                    <input type="number" step="0.1" id="inputFoodAmount" class="input-standard" required>
-                </div>
+                <label for="inputFoodAmount">Cibo somministrato (grammi)</label>
+                <input type="number" id="inputFoodAmount" class="input-standard" min="0" step="0.1">
+            </div>
                 <div class="form-group" id="groupHarvestAmount">
                     <label for="inputHarvestAmount">Prelievo Effettuato (grammi)</label>
                     <input type="number" step="0.1" id="inputHarvestAmount" class="input-standard" value="0">
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="groupAdultRatio">
                     <label for="inputAdultRatioSlider">Rapporto Adulti (At)</label>
                     <div class="slider-container">
                         <input type="range" id="inputAdultRatioSlider" min="0.0" max="1.0" step="0.01" value="0.35">
                         <input type="number" step="0.01" id="inputAdultRatio" class="input-standard" min="0.0" max="1.0" value="0.35" style="width: 80px;" required>
+                    </div>
+                </div>
+                <div class="form-group" id="groupColonyCounts" style="display: none; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div>
+                        <label for="inputColonyMales">Numero Maschi</label>
+                        <input type="number" id="inputColonyMales" class="input-standard" min="0" step="1" value="0">
+                    </div>
+                    <div>
+                        <label for="inputColonyFemales">Numero Femmine</label>
+                        <input type="number" id="inputColonyFemales" class="input-standard" min="0" step="1" value="0">
                     </div>
                 </div>
                 <div class="form-group">
@@ -725,6 +815,63 @@
                     <button type="submit" class="btn-standard btn-primary">💾 Salva Prezzi</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- MODAL COLONIA -->
+    <div class="modal-overlay" id="colonyModal">
+        <div class="modal">
+            <h2 id="colonyModalTitle">Nuova Colonia</h2>
+            <form id="colonyForm">
+                <input type="hidden" id="colonyId">
+                <div class="form-group">
+                    <label for="colonyName">Nome Identificativo *</label>
+                    <input type="text" id="colonyName" class="input-standard" required placeholder="Es. Scatola A - Riproduttori">
+                </div>
+                <div class="form-group">
+                    <label for="colonyType">Tipo (Destinazione d'Uso) *</label>
+                    <select id="colonyType" class="input-standard" required>
+                        <option value="Riproduzione">Riproduzione</option>
+                        <option value="Pasto">Pasto (Rettili/Animali)</option>
+                        <option value="Baby">Accrescimento (Baby)</option>
+                        <option value="Altro">Altro</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="colonyNotes">Note Generali</label>
+                    <textarea id="colonyNotes" class="input-standard" rows="2" placeholder="Dimensioni vasca, origine, etc."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-standard btn-cancel" id="btnCancelColony">Annulla</button>
+                    <button type="submit" class="btn-standard btn-primary">Salva Colonia</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL QR DISPLAY -->
+    <div class="modal-overlay" id="qrDisplayModal">
+        <div class="modal" style="text-align: center;">
+            <h2 id="qrColonyName" style="margin-bottom: 0.5rem; color: var(--accent-purple);">QR Code</h2>
+            <p class="subtitle-text" style="margin-bottom: 1.5rem;">Scansiona questo codice dall'app per gestire la colonia.</p>
+            <div style="background: white; padding: 1rem; border-radius: 8px; display: inline-block;" id="qrCanvasContainer">
+            </div>
+            <div class="modal-actions" style="justify-content: center; margin-top: 2rem;">
+                <button type="button" class="btn-standard btn-primary" id="btnPrintQR" style="margin-right: 1rem;">🖨️ Stampa</button>
+                <button type="button" class="btn-standard btn-cancel" id="btnCloseQrDisplay">Chiudi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL QR SCANNER -->
+    <div class="modal-overlay" id="qrScannerModal">
+        <div class="modal" style="max-width: 500px; padding: 1rem; position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2 style="margin: 0;">📷 Scansiona QR</h2>
+                <button type="button" class="btn-standard btn-cancel" id="btnCloseQrScanner" style="padding: 0.4rem 0.8rem;">X</button>
+            </div>
+            <div id="qr-reader" style="width:100%; border-radius: 8px; overflow: hidden;"></div>
+            <p id="qrScanError" style="color: var(--alert-red); font-size: 0.85rem; margin-top: 1rem; text-align: center; display: none;">QR Code non valido.</p>
         </div>
     </div>
 

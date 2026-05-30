@@ -1,3 +1,4 @@
+/* global Chart, QRCode, Html5QrcodeScanner, DUBIA */
 /**
  * D.U.B.I.A. Engine - Dynamic Updating Biomass Inference Algorithm
  * 
@@ -8,7 +9,7 @@
  */
 
 // Constants & Configurations
-const GAS_URL = "https://script.google.com/macros/s/AKfycbzW12kzUhqKywlxLkXbV22ef9MwP9jp3t77yCg3t5YxBVRqIy3iYwX1UjgaCX0VLAJ8jA/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyYpBZ6BQCqkRwN4eKZtP0bgsd5eug6esJJaBr_etsRBX2_JK-R6Xhmy-n-yJPUF4TJkw/exec";
 
 // Tasso di apprendimento α per la discesa del gradiente
 const ALPHA = 1e-6;
@@ -55,13 +56,14 @@ let appState = {
     charts: {},
     clients: [],
     cessioni: [],
-    customPrices: { ...DEFAULT_PRICES }
+    customPrices: { ...DEFAULT_PRICES },
+    colonies: []
 };
 
 // --- DATABASE (IndexedDB) ---
 const dbName = "DubiaDB";
-// Versione 2: aggiunto schema migration per garantire integrità su mobile
-const dbVersion = 3;
+// Versione 4: aggiunto store colonies
+const dbVersion = 4;
 let db;
 
 const initDB = () => {
@@ -88,6 +90,10 @@ const initDB = () => {
             if (!db.objectStoreNames.contains("cessioni")) {
                 db.createObjectStore("cessioni", { keyPath: "id", autoIncrement: true });
             }
+            // Crea store colonie se non esiste (v4+)
+            if (!db.objectStoreNames.contains("colonies")) {
+                db.createObjectStore("colonies", { keyPath: "id", autoIncrement: true });
+            }
             // Migration v1→v2: invalida i parametri salvati in modo che vengano
             // rivalidati al prossimo caricamento (reset a DEFAULT_PARAMS se fuori range)
             if (oldVersion === 1) {
@@ -95,6 +101,9 @@ const initDB = () => {
             }
             if (oldVersion < 3) {
                 console.info('[D.U.B.I.A.] Migration v3: aggiunto store clients e cessioni.');
+            }
+            if (oldVersion < 4) {
+                console.info('[D.U.B.I.A.] Migration v4: aggiunto store colonies.');
             }
         };
 
@@ -224,6 +233,9 @@ const loadInitialData = async () => {
 
     // ── Carica Clienti e Cessioni da IndexedDB ────────────────────────────
     await loadClientsAndCessioni();
+
+    // ── Carica Colonie da IndexedDB ───────────────────────────────────────
+    await loadColonies();
 
     // ── STEP 2: Prova a caricare le misure dal Cloud ─────────────────────────
     try {
@@ -2011,7 +2023,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             groupFoodAmount.style.display = 'block';
             groupHarvestAmount.style.display = 'block';
             document.getElementById('inputWeight').required = true;
-            document.getElementById('inputFoodAmount').required = true;
+            document.getElementById('inputFoodAmount').required = false;
         } else if (type === 'cibo') {
             groupWeight.style.display = 'none';
             groupFoodAmount.style.display = 'block';
@@ -2045,6 +2057,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const adultRatio = parseFloat(document.getElementById('inputAdultRatio').value);
         const notes = document.getElementById('inputNotes').value;
 
+        const colonyIdVal = document.getElementById('inputColonyId')?.value;
+        const colonyId = colonyIdVal ? Number(colonyIdVal) : null;
+
         let weight = 0;
         let foodAmount = 0;
         let harvestAmount = 0;
@@ -2059,11 +2074,45 @@ document.addEventListener('DOMContentLoaded', async () => {
             harvestAmount = parseFloat(document.getElementById('inputHarvestAmount')?.value) || 0;
         }
 
-        await processNewMeasurement(date, weight, foodAmount, adultRatio, notes, harvestAmount, false, true, eventType);
+        if (colonyId) {
+            const colony = appState.colonies.find(c => c.id === colonyId);
+            if (colony) {
+                let oldWeight = colony.current_weight || 0;
+                
+                if (eventType === 'pesata') {
+                    colony.current_weight = weight;
+                } else if (eventType === 'prelievo') {
+                    colony.current_weight = Math.max(0, oldWeight - harvestAmount);
+                } else if (eventType === 'cibo') {
+                    colony.current_weight = calculatePrediction(oldWeight, foodAmount, adultRatio, 0, appState.params, harvestAmount);
+                }
+                
+                await saveColony(colony);
+                
+                // Calcola il nuovo peso globale (somma esatta delle scatole attuali)
+                let globalSum = 0;
+                appState.colonies.forEach(c => globalSum += (c.current_weight || 0));
+                
+                const globalNotes = `[${colony.name}] ${notes}`;
+                await processNewMeasurement(date, globalSum, foodAmount, adultRatio, globalNotes, harvestAmount, false, true, eventType);
+            }
+        } else {
+            // Globale standard
+            await processNewMeasurement(date, weight, foodAmount, adultRatio, notes, harvestAmount, false, true, eventType);
+        }
         
         modal.classList.remove('active');
         form.reset();
         document.getElementById('inputDate').valueAsDate = new Date();
+
+        if (colonyId) {
+            updateColoniesUI();
+            // Aggiorna anche i dati nel modal dettagli colonia se è aperto
+            const detailCard = document.getElementById('colonyDetailCard');
+            if (detailCard && detailCard.style.display !== 'none') {
+                showColonyDetails(colonyId);
+            }
+        }
 
         if (inputType) {
             inputType.value = 'pesata';
@@ -2509,3 +2558,513 @@ if (typeof module !== 'undefined' && module.exports) {
         DEFAULT_PARAMS
     };
 }
+
+// ══════════════════════════════════════════════════════
+// COLONIE & QR CODE LOGIC
+// ══════════════════════════════════════════════════════
+
+/**
+ * Carica tutte le colonie da IndexedDB.
+ */
+const loadColonies = () => {
+    return new Promise((resolve) => {
+        const tx = db.transaction("colonies", "readonly");
+        const store = tx.objectStore("colonies");
+        const req = store.getAll();
+        req.onsuccess = () => {
+            appState.colonies = req.result || [];
+            resolve();
+        };
+        req.onerror = () => {
+            resolve();
+        };
+    });
+};
+
+/**
+ * Salva una nuova colonia o aggiorna una esistente in IndexedDB.
+ */
+const saveColony = (colony) => {
+    return new Promise((resolve) => {
+        const tx = db.transaction("colonies", "readwrite");
+        const store = tx.objectStore("colonies");
+        const req = store.put(colony);
+        req.onsuccess = (e) => {
+            if (!colony.id) colony.id = e.target.result;
+            const idx = appState.colonies.findIndex(c => c.id === colony.id);
+            if (idx >= 0) appState.colonies[idx] = colony;
+            else appState.colonies.push(colony);
+            
+            // Backup on Google Sheets
+            saveColonyToCloud(colony);
+
+            resolve(colony);
+        };
+        req.onerror = () => resolve(null);
+    });
+};
+
+/**
+ * Sync colonia base data to Google Sheets 
+ */
+const saveColonyToCloud = async (colony) => {
+    try {
+        const payload = {
+            event_type: 'colonia_sync',
+            date: colony.creation_date,
+            id: colony.id,
+            name: colony.name,
+            type: colony.type,
+            notes: colony.notes
+        };
+        fetch(GAS_URL, {
+            method: 'POST',
+            redirect: 'follow',
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify(payload)
+        });
+    } catch (e) {
+        console.warn("Colony backup to cloud failed.", e);
+    }
+};
+
+/**
+ * Elimina una colonia
+ */
+const deleteColony = (id) => {
+    return new Promise((resolve) => {
+        const tx = db.transaction("colonies", "readwrite");
+        const store = tx.objectStore("colonies");
+        store.delete(Number(id));
+        appState.colonies = appState.colonies.filter(c => c.id !== Number(id));
+        resolve();
+    });
+};
+
+/**
+ * Aggiorna la UI della lista colonie
+ */
+const updateColoniesUI = () => {
+    const listEl = document.getElementById('coloniesList');
+    if (!listEl) return;
+
+    if (appState.colonies.length === 0) {
+        listEl.innerHTML = `
+            <div class="clienti-empty">
+                <span class="clienti-empty-icon">📦</span>
+                <p>Nessun contenitore registrato.</p>
+                <p class="subtitle-text">Clicca su <strong>+ Nuova Colonia</strong> per iniziare.</p>
+            </div>`;
+    } else {
+        listEl.innerHTML = appState.colonies.map(c => {
+            const isBaby = c.type === 'Baby';
+            const isPasto = c.type === 'Pasto';
+            const color = isBaby ? '#f1c40f' : (isPasto ? '#3498db' : 'var(--accent-purple)');
+            
+            return `
+            <div class="colony-card" data-id="${c.id}">
+                <div class="colony-card-header">
+                    <div>
+                        <div class="colony-name">${c.name}</div>
+                        <span class="animal-badge" style="background: ${color}22; color: ${color}; border-color: ${color}44;">${c.type}</span>
+                    </div>
+                    <button class="btn-standard" onclick="showColonyDetails(${c.id})" style="padding: 0.3rem 0.6rem;">Apri</button>
+                </div>
+                <div class="colony-stats">
+                    <span>⚖️ ${c.current_weight ? c.current_weight.toFixed(1) + ' g' : '-- g'}</span>
+                    <span>♂️ ${c.males_count || '--'}</span>
+                    <span>♀️ ${c.females_count || '--'}</span>
+                </div>
+                ${c.notes ? `<div class="subtitle-text" style="font-size: 0.8rem; margin-top: 0.5rem;">${c.notes}</div>` : ''}
+            </div>`;
+        }).join('');
+    }
+
+    // Populate dropdown in the entry modal
+    const colonySelect = document.getElementById('inputColonyId');
+    if (colonySelect) {
+        const currentVal = colonySelect.value;
+        colonySelect.innerHTML = '<option value="">-- Massa Globale (Tutte le colonie) --</option>' +
+            appState.colonies.map(c => `<option value="${c.id}" ${c.id == currentVal ? 'selected' : ''}>${c.name} (${c.type})</option>`).join('');
+    }
+};
+
+/**
+ * Mostra i dettagli di una colonia specifica (chiamata dal bottone Apri o dal QR Code)
+ */
+window.showColonyDetails = (id) => {
+    const colony = appState.colonies.find(c => c.id === id);
+    if (!colony) {
+        showNotification("Errore", "Colonia non trovata", "alert");
+        return;
+    }
+
+    // Passa al tab colonie se non ci siamo
+    document.querySelector('.tab-btn[data-target="colonies"]').click();
+
+    document.getElementById('detailColonyName').innerText = colony.name;
+    document.getElementById('detailColonyType').innerText = colony.type;
+    document.getElementById('detailColonyWeight').innerText = colony.current_weight ? `${colony.current_weight.toFixed(1)} g` : '-- g';
+    document.getElementById('detailColonyMales').innerText = colony.males_count || '--';
+    document.getElementById('detailColonyFemales').innerText = colony.females_count || '--';
+    document.getElementById('detailColonyNotes').innerText = colony.notes || 'Nessuna nota.';
+
+    const detailCard = document.getElementById('colonyDetailCard');
+    detailCard.style.display = 'block';
+    
+    // Smooth scroll
+    detailCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // Buttons bindings
+    document.getElementById('btnDetailClose').onclick = () => detailCard.style.display = 'none';
+    
+    document.getElementById('btnDetailAddMeasure').onclick = () => {
+        document.getElementById('inputColonyId').value = colony.id;
+        document.getElementById('inputColonyId').dispatchEvent(new Event('change'));
+        document.getElementById('entryModal').classList.add('active');
+    };
+
+    document.getElementById('btnDetailShowQR').onclick = () => {
+        generateQRCode(colony);
+    };
+
+    document.getElementById('btnDetailDelete').onclick = () => {
+        if(confirm(`Vuoi eliminare la colonia ${colony.name}? (I dati storici globali rimarranno intatti)`)) {
+            deleteColony(colony.id).then(() => {
+                detailCard.style.display = 'none';
+                updateColoniesUI();
+                showNotification("Eliminata", "Colonia eliminata con successo.", "success");
+            });
+        }
+    };
+
+    // Render initial chart
+    const slider = document.getElementById('colonyPredictionSlider');
+    const label = document.getElementById('colonyPredictionDaysLabel');
+    if (slider && label) {
+        let currentDays = parseInt(slider.value) || 180;
+        label.innerText = currentDays + ' gg';
+        renderColonyPredictionChart(colony, currentDays);
+        
+        // Remove old listeners to prevent memory leaks or duplicate calls when switching colonies
+        const newSlider = slider.cloneNode(true);
+        slider.parentNode.replaceChild(newSlider, slider);
+        newSlider.addEventListener('input', (e) => {
+            const val = e.target.value;
+            document.getElementById('colonyPredictionDaysLabel').innerText = val + ' gg';
+            renderColonyPredictionChart(colony, parseInt(val));
+        });
+    }
+};
+
+let colonyPredictionChartInstance = null;
+
+const renderColonyPredictionChart = (colony, days) => {
+    const canvas = document.getElementById('colonyPredictionChart');
+    if (!canvas) return;
+    
+    if (colonyPredictionChartInstance) {
+        colonyPredictionChartInstance.destroy();
+    }
+    
+    // Fallback on global se mancano i conteggi
+    let W_t = colony.current_weight || 10;
+    let mCount = colony.males_count || 0;
+    let fCount = colony.females_count || 0;
+    
+    let W_adulti = (mCount * MASS.MALE) + (fCount * MASS.FEMALE);
+    let A_t = W_adulti / W_t;
+    if (W_adulti === 0 || A_t > 1) {
+        A_t = appState.params.adultRatio || (typeof DUBIA !== 'undefined' ? DUBIA.AT_DEFAULT : 0.35);
+    }
+    
+    const dubiaModule = D();
+    const theta1 = appState.params.theta1;
+    const theta2 = appState.params.theta2;
+
+    const labels = [];
+    const dataBiomass = [];
+    const dataPop = [];
+
+    // Simulate
+    const stepSize = Math.max(1, Math.floor(days / 15));
+    for (let day = 0; day <= days; day += stepSize) {
+        labels.push(day);
+        let predW = dubiaModule ? dubiaModule.feedForward(W_t, 0, A_t, day, theta1, theta2) : W_t;
+        dataBiomass.push(predW);
+        
+        let cns = dubiaModule ? dubiaModule.census(predW, A_t) : { N_totale: Math.round(predW / 0.5) };
+        dataPop.push(cns.N_totale);
+    }
+
+    colonyPredictionChartInstance = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Biomassa (g)',
+                    data: dataBiomass,
+                    borderColor: '#2ecc71',
+                    backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                    yAxisID: 'y',
+                    tension: 0.3,
+                    fill: true
+                },
+                {
+                    label: 'Popolazione (N)',
+                    data: dataPop,
+                    borderColor: '#8e44ad',
+                    backgroundColor: 'transparent',
+                    yAxisID: 'y1',
+                    borderDash: [5, 5],
+                    tension: 0.3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                x: { title: { display: true, text: 'Giorni Futuri' } },
+                y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Grammi (g)' } },
+                y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Individui (N)' }, grid: { drawOnChartArea: false } }
+            }
+        }
+    });
+};
+
+/**
+ * Genera il QR Code visuale per una colonia
+ */
+const generateQRCode = (colony) => {
+    const container = document.getElementById('qrCanvasContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    const qrData = JSON.stringify({ dubia_colony_id: colony.id });
+    
+    new QRCode(container, {
+        text: qrData,
+        width: 250,
+        height: 250,
+        colorDark : "#182B49",
+        colorLight : "#ffffff",
+        correctLevel : QRCode.CorrectLevel.H
+    });
+
+    document.getElementById('qrColonyName').innerText = colony.name;
+    document.getElementById('qrDisplayModal').classList.add('active');
+};
+
+/**
+ * Gestione scanner QR
+ */
+let html5QrcodeScanner = null;
+
+const startQRScanner = () => {
+    document.getElementById('qrScanError').style.display = 'none';
+    document.getElementById('qrScannerModal').classList.add('active');
+    
+    if (!html5QrcodeScanner) {
+        html5QrcodeScanner = new Html5QrcodeScanner(
+            "qr-reader", 
+            { fps: 10, qrbox: {width: 250, height: 250} }, 
+            /* verbose= */ false
+        );
+    }
+    
+    html5QrcodeScanner.render((decodedText, decodedResult) => {
+        // success
+        try {
+            const data = JSON.parse(decodedText);
+            if (data && data.dubia_colony_id) {
+                html5QrcodeScanner.clear();
+                document.getElementById('qrScannerModal').classList.remove('active');
+                showColonyDetails(data.dubia_colony_id);
+            } else {
+                document.getElementById('qrScanError').style.display = 'block';
+            }
+        } catch(e) {
+            document.getElementById('qrScanError').style.display = 'block';
+        }
+    }, (error) => {
+        // failure - just ignore to keep scanning
+    });
+};
+
+const stopQRScanner = () => {
+    if (html5QrcodeScanner) {
+        html5QrcodeScanner.clear();
+    }
+    document.getElementById('qrScannerModal').classList.remove('active');
+};
+
+// ── Inizializzazione Event Listener Colonie ─────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // Aggiorna UI colonie
+    setTimeout(() => updateColoniesUI(), 500);
+
+    // Modal Nuova Colonia
+    const btnNuovaColonia = document.getElementById('btnNuovaColonia');
+    if (btnNuovaColonia) {
+        btnNuovaColonia.addEventListener('click', () => {
+            document.getElementById('colonyForm').reset();
+            document.getElementById('colonyId').value = '';
+            document.getElementById('colonyModalTitle').innerText = 'Nuova Colonia';
+            document.getElementById('colonyModal').classList.add('active');
+        });
+    }
+
+    const btnCancelColony = document.getElementById('btnCancelColony');
+    if (btnCancelColony) {
+        btnCancelColony.addEventListener('click', () => document.getElementById('colonyModal').classList.remove('active'));
+    }
+
+    const colonyForm = document.getElementById('colonyForm');
+    if (colonyForm) {
+        colonyForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const idVal = document.getElementById('colonyId').value;
+            const colony = {
+                name:  document.getElementById('colonyName').value.trim(),
+                type:  document.getElementById('colonyType').value,
+                notes: document.getElementById('colonyNotes').value.trim()
+            };
+            if (idVal) {
+                colony.id = Number(idVal);
+                // Preserve existing metrics
+                const existing = appState.colonies.find(c => c.id === colony.id);
+                if (existing) {
+                    colony.current_weight = existing.current_weight;
+                    colony.males_count = existing.males_count;
+                    colony.females_count = existing.females_count;
+                    colony.creation_date = existing.creation_date;
+                }
+            } else {
+                colony.creation_date = new Date().toISOString().split('T')[0];
+            }
+
+            await saveColony(colony);
+            document.getElementById('colonyModal').classList.remove('active');
+            updateColoniesUI();
+            showNotification('Colonia Salvata', `${colony.name} salvata con successo.`, 'success');
+        });
+    }
+
+    // Modal Display QR
+    document.getElementById('btnCloseQrDisplay')?.addEventListener('click', () => {
+        document.getElementById('qrDisplayModal').classList.remove('active');
+    });
+
+    document.getElementById('btnPrintQR')?.addEventListener('click', () => {
+        const container = document.getElementById('qrCanvasContainer');
+        if (!container) return;
+        const canvas = container.querySelector('canvas');
+        if (!canvas) return;
+        const colonyName = document.getElementById('qrColonyName').innerText;
+        const imgData = canvas.toDataURL("image/png");
+        
+        const printWindow = window.open('', '', 'height=600,width=800');
+        if (!printWindow) {
+            showNotification("Errore Popup", "Abilita i popup per stampare il QR.", "alert");
+            return;
+        }
+        printWindow.document.write('<html><head><title>Stampa QR Code</title>');
+        printWindow.document.write('<style>');
+        printWindow.document.write('body { font-family: "Inter", sans-serif; text-align: center; padding: 2rem; color: #333; }');
+        printWindow.document.write('h1 { margin-bottom: 0.5rem; font-size: 2rem; }');
+        printWindow.document.write('p { margin-bottom: 2rem; color: #666; }');
+        printWindow.document.write('img { max-width: 300px; height: auto; border: 2px solid #ccc; padding: 10px; border-radius: 8px; }');
+        printWindow.document.write('</style>');
+        printWindow.document.write('</head><body>');
+        printWindow.document.write('<h1>' + colonyName + '</h1>');
+        printWindow.document.write('<p>Codice per scanner D.U.B.I.A.</p>');
+        printWindow.document.write('<img src="' + imgData + '" />');
+        printWindow.document.write('</body></html>');
+        
+        printWindow.document.close();
+        
+        setTimeout(() => {
+            printWindow.focus();
+            printWindow.print();
+            printWindow.close();
+        }, 500);
+    });
+
+    // Modal Scanner QR
+    document.getElementById('btnScanQR')?.addEventListener('click', startQRScanner);
+    document.getElementById('btnCloseQrScanner')?.addEventListener('click', stopQRScanner);
+
+    // Gestione input maschi/femmine nel form pesata quando si seleziona una colonia
+    const inputColonyId = document.getElementById('inputColonyId');
+    const groupColonyCounts = document.getElementById('groupColonyCounts');
+    const groupAdultRatio = document.getElementById('groupAdultRatio');
+    
+    if (inputColonyId) {
+        inputColonyId.addEventListener('change', () => {
+            if (inputColonyId.value !== "") {
+                // Una colonia specifica è selezionata
+                groupColonyCounts.style.display = 'grid';
+                // Nascondiamo il cursore Ratio, che viene calcolato indirettamente o lasciato globale
+                groupAdultRatio.style.display = 'none';
+            } else {
+                // Massa globale
+                groupColonyCounts.style.display = 'none';
+                groupAdultRatio.style.display = 'block';
+            }
+        });
+    }
+});
+
+// ── Override o Patch per processNewMeasurement ───────────────────────
+// Dobbiamo assicurarci che i dati della singola colonia vengano aggiornati quando si salva un evento
+const originalProcessNewMeasurement = processNewMeasurement;
+processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, notes, harvestAmount, isNewBlood, isManualSubmit, eventType) => {
+    
+    let colony_id = null;
+    let males_count = 0;
+    let females_count = 0;
+
+    const colonySelect = document.getElementById('inputColonyId');
+    if (colonySelect && colonySelect.value !== "") {
+        colony_id = Number(colonySelect.value);
+        males_count = Number(document.getElementById('inputColonyMales').value) || 0;
+        females_count = Number(document.getElementById('inputColonyFemales').value) || 0;
+        
+        // Se l'evento è una pesata o un nuovo sangue per una colonia, aggiorniamo il suo stato interno
+        if (eventType === 'pesata' || eventType === 'calibrazione' || eventType === 'nuovo_sangue') {
+            const colony = appState.colonies.find(c => c.id === colony_id);
+            if (colony) {
+                colony.current_weight = realWeight;
+                if (males_count > 0 || females_count > 0) {
+                    colony.males_count = males_count;
+                    colony.females_count = females_count;
+                }
+                await saveColony(colony);
+                updateColoniesUI();
+                
+                // Opzionale: aggiorna la UI di dettaglio se è aperta
+                const detailCard = document.getElementById('colonyDetailCard');
+                if (detailCard && detailCard.style.display === 'block' && document.getElementById('detailColonyName').innerText === colony.name) {
+                    showColonyDetails(colony.id);
+                }
+            }
+        }
+    }
+
+    await originalProcessNewMeasurement(date, realWeight, foodAmount, adultRatio, notes, harvestAmount, isNewBlood, isManualSubmit, eventType);
+};
+
+// Patch saveMeasurement per iniettare colony_id, males_count, females_count
+const originalSaveMeasurement = saveMeasurement;
+saveMeasurement = async (measurement) => {
+    const colonySelect = document.getElementById('inputColonyId');
+    if (colonySelect && colonySelect.value !== "") {
+        measurement.colony_id = Number(colonySelect.value);
+        measurement.males_count = Number(document.getElementById('inputColonyMales').value) || 0;
+        measurement.females_count = Number(document.getElementById('inputColonyFemales').value) || 0;
+    }
+    return originalSaveMeasurement(measurement);
+};
